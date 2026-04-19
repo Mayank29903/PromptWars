@@ -4,6 +4,10 @@ from contextlib import asynccontextmanager
 from .config import config
 from .kafka_consumer import start_safety_consumer
 from .redis_client import get_redis, close_redis
+from .panic_detector import PanicDetector
+
+# Instantiate panic detector alongside crush detector (crush detector lives in kafka_consumer)
+panic_detector = PanicDetector()
 
 
 @asynccontextmanager
@@ -36,6 +40,14 @@ async def simulate_alert(data: dict):
     from .kafka_consumer import process_zone_update
     await process_zone_update(data)
     return {'message': 'Simulation triggered'}
+
+
+@app.post('/api/v1/safety/panic-check')
+async def panic_check(data: dict):
+    """Evaluate audio features for crowd panic detection."""
+    audio_features = data.get('audio_features', [])
+    result = panic_detector.detect(audio_features)
+    return {'success': True, 'data': result}
 
 
 if __name__ == '__main__':

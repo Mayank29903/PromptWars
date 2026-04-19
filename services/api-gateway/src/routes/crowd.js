@@ -1,11 +1,26 @@
 export default async function crowdRoutes(fastify) {
+
+  /**
+   * Async SCAN helper — replaces O(n) blocking redis.keys() calls.
+   * Iterates with cursor until Redis returns '0', collecting all matches.
+   */
+  async function scanKeys(pattern) {
+    let cursor = '0';
+    let keys = [];
+    do {
+      const result = await fastify.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+      cursor = result[0];
+      keys.push(...result[1]);
+    } while (cursor !== '0');
+    return keys;
+  }
+
   fastify.get('/density', {
     onRequest: [fastify.authenticate]
   }, async (request, reply) => {
     const { zone_id, floor } = request.query;
     
-    // In production we should use scan or specific keys for zones, getting all might block
-    const keys = await fastify.redis.keys('zone:density:*');
+    const keys = await scanKeys('zone:density:*');
     
     let densities = [];
     if (keys.length > 0) {
@@ -79,7 +94,7 @@ export default async function crowdRoutes(fastify) {
     } catch (err) {
       fastify.log.warn('ML Service unreachable, falling back to Last Known State');
       
-      const keys = await fastify.redis.keys('zone:density:*');
+      const keys = await scanKeys('zone:density:*');
       let fallbackData = [];
       if (keys.length > 0) {
         const values = await fastify.redis.mget(keys);
@@ -92,13 +107,7 @@ export default async function crowdRoutes(fastify) {
   fastify.get('/flow-vectors', {
     onRequest: [fastify.authenticate]
   }, async (request, reply) => {
-    let cursor = '0';
-    let keys = [];
-    do {
-      const result = await fastify.redis.scan(cursor, 'MATCH', 'flow:vector:*', 'COUNT', 100);
-      cursor = result[0];
-      keys.push(...result[1]);
-    } while (cursor !== '0');
+    const keys = await scanKeys('flow:vector:*');
 
     if (keys.length === 0) return { success: true, data: [] };
 

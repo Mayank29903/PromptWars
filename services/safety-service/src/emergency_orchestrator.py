@@ -20,8 +20,6 @@ class EmergencyOrchestrator:
             await self._handle_caution(alert)
         elif level == AlertLevel.WARNING:
             await self._handle_warning(alert)
-        elif level == AlertLevel.EMERGENCY:
-            await self._handle_emergency(alert, evac_routes)
         elif level == AlertLevel.CRITICAL:
             await self._handle_critical(alert, evac_routes)
 
@@ -36,10 +34,15 @@ class EmergencyOrchestrator:
         await self._notify_adjacent_fans(alert)
         print(f'[WARNING] Zone {alert.zone_id} — security dispatch triggered')
 
-    async def _handle_emergency(self, alert: SafetyAlert, evac_routes: dict):
+    async def _handle_critical(self, alert: SafetyAlert, evac_routes: dict):
+        """
+        Full emergency protocol. All tasks run via asyncio.gather with
+        return_exceptions=True — a failed PA call never blocks signage or
+        emergency services. Phone call is included in the single gather.
+        """
         redis = await get_redis()
         await redis.set('emergency:mode', 'active', ex=21600)
-        print(f'[EMERGENCY] Zone {alert.zone_id} — activating full protocol')
+        print(f'[CRITICAL] Zone {alert.zone_id} — activating full emergency protocol')
 
         tasks = [
             self._publish_to_realtime('safety:emergency', alert.model_dump()),
@@ -48,15 +51,13 @@ class EmergencyOrchestrator:
             self._log_incident(alert, severity='CRITICAL'),
             emer_services.send_alert(alert, evac_routes),
             self._push_evac_routes_to_fans(alert, evac_routes),
+            emer_services.trigger_phone_call(alert),
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for i, r in enumerate(results):
             if isinstance(r, Exception):
-                print(f'[EMERGENCY] Task {i} failed (non-fatal): {r}')
+                print(f'[CRITICAL] Task {i} failed (non-fatal): {r}')
 
-    async def _handle_critical(self, alert: SafetyAlert, evac_routes: dict):
-        await self._handle_emergency(alert, evac_routes)
-        await emer_services.trigger_phone_call(alert)
         print(f'[CRITICAL] Zone {alert.zone_id} — emergency services phone call triggered')
 
     async def _publish_to_realtime(self, event: str, data: dict):

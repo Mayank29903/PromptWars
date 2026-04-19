@@ -1,3 +1,4 @@
+import json
 import uuid
 from datetime import datetime, timezone
 from .schemas import ACTION_DEFINITIONS, PointTransaction
@@ -90,22 +91,22 @@ class PointsEngine:
         )
 
         if kafka_producer:
-            tier_suffix = (
-                f',"tier_upgraded":true,"new_tier":"{new_tier}"'
-                if new_tier else ''
-            )
+            payload = {
+                'event_type': 'POINTS_EARNED',
+                'user_id': user_id,
+                'points_earned': final,
+                'action_type': action_type,
+                'new_balance': new_balance,
+                'multiplier_applied': multiplier
+            }
+            if new_tier:
+                payload['tier_upgraded'] = True
+                payload['new_tier'] = new_tier
+
             await kafka_producer.send(
                 'fan.behavior.events',
                 key=user_id.encode(),
-                value=(
-                    f'{{"event_type":"POINTS_EARNED"'
-                    f',"user_id":"{user_id}"'
-                    f',"points_earned":{final}'
-                    f',"action_type":"{action_type}"'
-                    f',"new_balance":{new_balance}'
-                    f',"multiplier_applied":{multiplier}'
-                    f'{tier_suffix}}}'
-                ).encode()
+                value=json.dumps(payload).encode()
             )
 
         return txn

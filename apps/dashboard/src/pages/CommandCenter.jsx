@@ -247,13 +247,15 @@ export default function CommandCenter() {
       <div className="flex-1 flex px-4 pb-4 gap-[6px] relative overflow-hidden min-h-0">
         <div className="flex-1 relative border border-[var(--ag-border-subtle)] rounded overflow-hidden">
            <HeatmapCanvas />
-           {/* Predict toggle button */}
+           {/* Dev tools hidden in production build */}
            <div className="absolute top-4 right-4 z-10 flex gap-2">
+             {import.meta.env.DEV && (
              <button 
                 onClick={() => setEmergencyMode(true)} 
                 className="px-3 py-1 bg-[var(--ag-red)]/10 text-[var(--ag-red)] text-xs border border-[var(--ag-red)]/50 border-dashed hover:bg-red-900 focus:outline-none">
                [DEV] CRITICAL ON
              </button>
+             )}
              <button 
                 onClick={() => setPredictMode(!predictMode)} 
                 className={`px-3 py-1 text-xs border transition-colors focus:outline-none ${predictMode ? 'border-[var(--ag-amber)] text-[var(--ag-amber)] bg-amber-900/20 shadow-[0_0_10px_var(--ag-amber)]' : 'border-[var(--ag-cyan)] text-[var(--ag-cyan)] bg-transparent hover:bg-cyan-900/20'}`}>
