@@ -1,6 +1,7 @@
 {
   "name": "antigravity",
   "private": true,
+  "packageManager": "pnpm@8.15.5",
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
