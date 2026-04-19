@@ -11,6 +11,7 @@ import fanRoutes from './routes/fan.js';
 import opsRoutes from './routes/ops.js';
 import safetyRoutes from './routes/safety.js';
 import predictRoutes from './routes/predict.js';
+import aiRoutes from './routes/ai.js';
 import authRoutes from './routes/auth.js';
 
 const app = Fastify({
@@ -37,6 +38,7 @@ await app.register(fanRoutes, { prefix: '/api/v1/fan' });
 await app.register(opsRoutes, { prefix: '/api/v1/ops' });
 await app.register(safetyRoutes, { prefix: '/api/v1/safety' });
 await app.register(predictRoutes, { prefix: '/api/v1/predict' });
+await app.register(aiRoutes, { prefix: '/api/v1/ai' });
 
 app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
 

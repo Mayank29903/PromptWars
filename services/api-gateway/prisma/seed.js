@@ -123,65 +123,28 @@ async function main() {
     });
   }
 
-  // 6. Navigation Graph — Manchester Arena (12 nodes)
-  // Layout:  gate_nw ── jnc_north ── gate_ne
-  //           |    \       |       /    |
-  //         jnc_west ── stairs ── jnc_east
-  //           |    /       |       \    |
-  //         gate_sw ── jnc_south ── gate_se
-  //                    elevator
-  //         exit_n (north)    exit_s (south)
-  const navNodes = [
-    // Walkable Junctions (interior concourse grid)
-    { name: 'Junction North',  nodeType: 'WALKABLE_JUNCTION', coords: [100, 130], connected: ['gate_nw', 'gate_ne', 'jnc_west', 'jnc_east', 'stairs', 'exit_n'] },
-    { name: 'Junction South',  nodeType: 'WALKABLE_JUNCTION', coords: [100, 30],  connected: ['gate_sw', 'gate_se', 'jnc_west', 'jnc_east', 'elevator', 'exit_s'] },
-    { name: 'Junction East',   nodeType: 'WALKABLE_JUNCTION', coords: [180, 75],  connected: ['jnc_north', 'jnc_south', 'gate_ne', 'gate_se', 'stairs'] },
-    { name: 'Junction West',   nodeType: 'WALKABLE_JUNCTION', coords: [20, 75],   connected: ['jnc_north', 'jnc_south', 'gate_nw', 'gate_sw'] },
-    // Gates
-    { name: 'Gate NW',         nodeType: 'GATE',   coords: [10, 140],  connected: ['jnc_north', 'jnc_west'] },
-    { name: 'Gate NE',         nodeType: 'GATE',   coords: [190, 140], connected: ['jnc_north', 'jnc_east'] },
-    { name: 'Gate SW',         nodeType: 'GATE',   coords: [10, 10],   connected: ['jnc_south', 'jnc_west'] },
-    { name: 'Gate SE',         nodeType: 'GATE',   coords: [190, 10],  connected: ['jnc_south', 'jnc_east'] },
-    // Exits
-    { name: 'Main Exit North', nodeType: 'EXIT',   coords: [100, 150], connected: ['jnc_north', 'gate_nw', 'gate_ne'] },
-    { name: 'Main Exit South', nodeType: 'EXIT',   coords: [100, 0],   connected: ['jnc_south', 'gate_sw', 'gate_se'] },
-    // Stairs & Elevator
-    { name: 'Central Stairs',  nodeType: 'STAIRS',   coords: [130, 100], connected: ['jnc_north', 'jnc_east'] },
-    { name: 'Central Elevator', nodeType: 'ELEVATOR', coords: [70, 50],  connected: ['jnc_south', 'jnc_west'] },
+  // 6. Navigation Graph — Explicit hardcoded routes for pathfinding
+  const navNodesData = [
+    { id: 'jnc-north', venueId: venue.id, floorNumber: 1, name: 'Junction North', nodeType: 'WALKABLE_JUNCTION', coords: [100, 140], connectedNodeIds: ['jnc-east','jnc-west','gate-nw','gate-ne'], isAccessible: true },
+    { id: 'jnc-south', venueId: venue.id, floorNumber: 1, name: 'Junction South', nodeType: 'WALKABLE_JUNCTION', coords: [100, 20],  connectedNodeIds: ['jnc-east','jnc-west','exit-sw','exit-se'], isAccessible: true },
+    { id: 'jnc-east',  venueId: venue.id, floorNumber: 1, name: 'Junction East',  nodeType: 'WALKABLE_JUNCTION', coords: [180, 75],  connectedNodeIds: ['jnc-north','jnc-south','gate-ne','exit-se'], isAccessible: true },
+    { id: 'jnc-west',  venueId: venue.id, floorNumber: 1, name: 'Junction West',  nodeType: 'WALKABLE_JUNCTION', coords: [20, 75],   connectedNodeIds: ['jnc-north','jnc-south','gate-nw','exit-sw'], isAccessible: true },
+    { id: 'gate-nw',   venueId: venue.id, floorNumber: 1, name: 'Gate NW',        nodeType: 'GATE',              coords: [10, 140],  connectedNodeIds: ['jnc-north','jnc-west'], isAccessible: true },
+    { id: 'gate-ne',   venueId: venue.id, floorNumber: 1, name: 'Gate NE',        nodeType: 'GATE',              coords: [190, 140], connectedNodeIds: ['jnc-north','jnc-east'], isAccessible: true },
+    { id: 'gate-sw',   venueId: venue.id, floorNumber: 1, name: 'Gate SW',        nodeType: 'GATE',              coords: [10, 20],   connectedNodeIds: ['jnc-south','jnc-west'], isAccessible: true },
+    { id: 'gate-se',   venueId: venue.id, floorNumber: 1, name: 'Gate SE',        nodeType: 'GATE',              coords: [190, 20],  connectedNodeIds: ['jnc-south','jnc-east'], isAccessible: true },
+    { id: 'exit-sw',   venueId: venue.id, floorNumber: 1, name: 'Exit SW',        nodeType: 'EXIT',              coords: [5, 10],    connectedNodeIds: ['jnc-south','gate-sw'], isAccessible: true },
+    { id: 'exit-se',   venueId: venue.id, floorNumber: 1, name: 'Exit SE',        nodeType: 'EXIT',              coords: [195, 10],  connectedNodeIds: ['jnc-south','gate-se'], isAccessible: true },
+    { id: 'stairs-l1', venueId: venue.id, floorNumber: 1, name: 'Stairs',         nodeType: 'STAIRS',            coords: [50, 75],   connectedNodeIds: ['jnc-west','jnc-north'], isAccessible: false },
+    { id: 'elevator-l1', venueId: venue.id, floorNumber: 1, name: 'Elevator',     nodeType: 'ELEVATOR',          coords: [150, 75],  connectedNodeIds: ['jnc-east','jnc-north'], isAccessible: true }
   ];
 
-  // Map short keys to UUIDs
-  const shortKeys = ['jnc_north', 'jnc_south', 'jnc_east', 'jnc_west', 'gate_nw', 'gate_ne', 'gate_sw', 'gate_se', 'exit_n', 'exit_s', 'stairs', 'elevator'];
-  const idMap = {};
+  const createdNodes = await prisma.navigationNode.createMany({
+    data: navNodesData
+  });
 
-  // First pass: create all nodes with empty connections
-  for (let i = 0; i < navNodes.length; i++) {
-    const n = navNodes[i];
-    const created = await prisma.navigationNode.create({
-      data: {
-        venueId: venue.id,
-        floorNumber: 1,
-        name: n.name,
-        nodeType: n.nodeType,
-        coords: n.coords,
-        connectedNodeIds: [],
-        isAccessible: n.nodeType !== 'STAIRS'
-      }
-    });
-    idMap[shortKeys[i]] = created.id;
-  }
+  console.log(`Navigation graph seeded: ${createdNodes.count} nodes for Manchester Arena`);
 
-  // Second pass: update connectedNodeIds with real UUIDs
-  for (let i = 0; i < navNodes.length; i++) {
-    const n = navNodes[i];
-    const realConnected = n.connected.map(key => idMap[key]).filter(Boolean);
-    await prisma.navigationNode.update({
-      where: { id: idMap[shortKeys[i]] },
-      data: { connectedNodeIds: realConnected }
-    });
-  }
-
-  console.log(`Navigation graph seeded: ${navNodes.length} nodes for Manchester Arena`);
   console.log('Seeding completed successfully.');
 }
 

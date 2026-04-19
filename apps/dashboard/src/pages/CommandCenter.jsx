@@ -4,6 +4,9 @@ import { useClock } from '../utils/hooks';
 import { HeatmapCanvas } from '../components/HeatmapCanvas';
 import { socketService } from '../services/socket';
 import { TimelineScrubber, Ticker } from '../components/TimelineFooter';
+import AICommandBar from '../components/AICommandBar';
+import CounterfactualPanel from '../components/CounterfactualPanel';
+import StadiumSVG from '../components/StadiumSVG';
 
 // ── Inline sleep util — no external import needed ───────────────────
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -31,7 +34,7 @@ function NarrationBanner({ demoStep, demoNarration }) {
   );
 }
 
-function Header({ setView, demoRunning, onRunDemo }) {
+function Header({ setView, demoRunning, onRunDemo, onOpenCommand }) {
   const { timeStr } = useClock();
   const [aiState, setAiState] = useState(0);
 
@@ -91,12 +94,20 @@ function Header({ setView, demoRunning, onRunDemo }) {
             DEMO RUNNING...
           </span>
         ) : (
-          <button
-            onClick={onRunDemo}
-            className="px-3 py-1 font-mono text-xs tracking-widest border border-dashed border-[var(--ag-cyan)] text-[var(--ag-cyan)] hover:bg-cyan-900/20 transition-colors rounded"
-          >
-            RUN DEMO
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onOpenCommand}
+              className="px-3 py-1 font-mono text-xs tracking-widest border border-[var(--ag-cyan)]/50 text-[var(--ag-cyan)] bg-[var(--ag-cyan)]/10 hover:bg-[var(--ag-cyan)]/20 transition-colors rounded"
+            >
+              CMD /
+            </button>
+            <button
+              onClick={onRunDemo}
+              className="px-3 py-1 font-mono text-xs tracking-widest border border-dashed border-[var(--ag-cyan)] text-[var(--ag-cyan)] hover:bg-cyan-900/20 transition-colors rounded"
+            >
+              RUN DEMO
+            </button>
+          </div>
         )}
 
         {setView && (
@@ -376,7 +387,7 @@ function TelemetryPanel() {
   );
 }
 
-function Sidebar() {
+function Sidebar({ onOpenWhatIf }) {
   const { systemModuleStatuses, queues } = useOpsStore();
 
   return (
@@ -427,6 +438,13 @@ function Sidebar() {
         </div>
       </div>
       
+      <button 
+         onClick={onOpenWhatIf}
+         className="w-full py-2 border border-dashed border-[var(--ag-amber)] text-[var(--ag-amber)] font-mono text-xs tracking-widest hover:bg-amber-900/10 rounded"
+      >
+         WHAT IF?
+      </button>
+
       <TelemetryPanel />
     </div>
   );
@@ -604,11 +622,14 @@ function ZoneExplainer({ data, onDismiss }) {
   );
 }
 
-export default function CommandCenter({ setView }) {
+export default function CommandCenter({ setView, demoRef }) {
   const { setPredictMode, setEmergencyMode, predictMode, addAlert, loadPredictData } = useOpsStore();
 
   // ── Zone Explainability state ─────────────────────────────────────
   const [zoneExplanation, setZoneExplanation] = useState(null);
+  const [isCommandBarOpen, setIsCommandBarOpen] = useState(false);
+  const [isCounterfactualOpen, setIsCounterfactualOpen] = useState(false);
+  const [useStadiumSvg, setUseStadiumSvg] = useState(false);
 
   const handleZoneClick = useCallback(async (zone) => {
     const density = zone.current * 6.0; // Convert to persons/sqm
@@ -730,6 +751,8 @@ export default function CommandCenter({ setView }) {
 
   useEffect(() => {
     socketService.connect();
+    // Expose startDemo via ref for ?demo=true URL param support
+    if (demoRef) demoRef.current = { start: startDemo };
     return () => socketService.disconnect();
   }, []);
 
@@ -739,6 +762,10 @@ export default function CommandCenter({ setView }) {
       if (e.target.tagName === 'INPUT') return;
       
       switch(e.key.toLowerCase()) {
+        case '/':
+          e.preventDefault();
+          setIsCommandBarOpen(true);
+          break;
         case 'd':
           startDemo();
           break;
@@ -762,9 +789,11 @@ export default function CommandCenter({ setView }) {
 
   return (
     <div className={`w-screen h-screen m-0 p-0 overflow-hidden flex flex-col font-ui text-[var(--ag-text-primary)] ag-grid-bg transition-colors duration-1000`}>
-      <Header setView={setView} demoRunning={demoRunning} onRunDemo={startDemo} />
+      <Header setView={setView} demoRunning={demoRunning} onRunDemo={startDemo} onOpenCommand={() => setIsCommandBarOpen(true)} />
       <MetricsRow />
       <PredictPanel />
+      <AICommandBar isOpen={isCommandBarOpen} onClose={() => setIsCommandBarOpen(false)} />
+      <CounterfactualPanel isOpen={isCounterfactualOpen} onClose={() => setIsCounterfactualOpen(false)} />
       {/* NarrationBanner — only visible during demo */}
       {demoRunning && demoNarration && (
         <NarrationBanner demoStep={demoStep} demoNarration={demoNarration} />
@@ -773,7 +802,7 @@ export default function CommandCenter({ setView }) {
       {/* Main Area */}
       <div className="flex-1 flex px-4 pb-4 gap-[6px] relative overflow-hidden min-h-0">
         <div className="flex-1 relative border border-[var(--ag-border-subtle)] rounded overflow-hidden">
-           <HeatmapCanvas onZoneClick={handleZoneClick} />
+           {useStadiumSvg ? <StadiumSVG onZoneClick={handleZoneClick} /> : <HeatmapCanvas onZoneClick={handleZoneClick} />}
            {/* Zone Explainability Panel */}
            <ZoneExplainer data={zoneExplanation} onDismiss={() => setZoneExplanation(null)} />
            {/* Dev tools hidden in production build */}
@@ -786,6 +815,11 @@ export default function CommandCenter({ setView }) {
              </button>
              )}
              <button 
+                onClick={() => setUseStadiumSvg(!useStadiumSvg)} 
+                className={`px-3 py-1 text-xs border transition-colors focus:outline-none ${useStadiumSvg ? 'border-white text-white font-bold bg-white/10' : 'border-gray-500 text-gray-400 hover:text-white'}`}>
+               STADIUM VIEW
+             </button>
+             <button 
                 onClick={() => setPredictMode(!predictMode)} 
                 className={`px-3 py-1 text-xs border transition-colors focus:outline-none ${predictMode ? 'border-[var(--ag-amber)] text-[var(--ag-amber)] bg-amber-900/40 shadow-[0_0_10px_var(--ag-amber)] font-bold' : 'border-[var(--ag-cyan)] text-[var(--ag-cyan)] bg-transparent hover:bg-cyan-900/20'}`}>
                PREDICT 30M
@@ -797,7 +831,7 @@ export default function CommandCenter({ setView }) {
              [D] demo [E] emergency [P] predict [Esc] clear
            </div>
         </div>
-        <Sidebar />
+        <Sidebar onOpenWhatIf={() => setIsCounterfactualOpen(true)} />
         <IntelligenceFeed />
       </div>
 

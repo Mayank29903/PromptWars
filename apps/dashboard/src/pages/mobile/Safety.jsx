@@ -3,6 +3,8 @@ import { useOpsStore } from '../../store/ops';
 import { Phone, Navigation, AlertTriangle, ShieldCheck, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+import { socketService, getDemoHeaders } from '../../services/socket';
+
 export default function Safety() {
   const { emergencyMode } = useOpsStore();
   const [modalOpen, setModalOpen] = useState(false);
@@ -25,8 +27,8 @@ export default function Safety() {
     try {
       await fetch('/api/v1/ops/incident', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: incidentType, zone_id: 'unknown' })
+        headers: getDemoHeaders(),
+        body: JSON.stringify({ type: incidentType, zoneId: 'unknown' })
       });
     } catch (e) {
       // ignore, handle auth gracefully

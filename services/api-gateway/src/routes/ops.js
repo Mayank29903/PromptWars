@@ -87,14 +87,17 @@ export default async function opsRoutes(fastify) {
   }, async (request, reply) => {
     const { eventId, zoneId, type, severity, description, mediaUrls } = request.body;
 
+    const demoEvent = await fastify.prisma.event.findFirst();
+    const demoZone = await fastify.prisma.crowdZone.findFirst();
+
     const incident = await fastify.prisma.incident.create({
       data: {
-        eventId,
-        zoneId,
+        eventId: eventId || demoEvent?.id || 'demo-event',
+        zoneId: zoneId || demoZone?.id || 'demo-zone',
         reportedById: request.user.userId,
-        type,
-        severity,
-        description,
+        type: type || 'GENERAL',
+        severity: severity || 'MEDIUM',
+        description: description || 'User reported incident',
         mediaUrls: mediaUrls || []
       }
     });
@@ -138,7 +141,6 @@ export default async function opsRoutes(fastify) {
 
     const { config } = await import('../config.js');
 
-    let activeConnections = 0;
     try {
       const resp = await fetch(`${config.services.realtime}/health`);
       if (resp.ok) {

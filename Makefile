@@ -103,3 +103,53 @@ test:
 	cd services/fan-pulse-service && python -m pytest tests/ -v
 	cd services/predict-engine && python -m pytest tests/ -v
 	pnpm test
+
+# ── Pre-Submission Validation ─────────────────────────────────────────
+validate:
+	@echo ""
+	@echo "╔══════════════════════════════════════════════════════════╗"
+	@echo "║         ANTIGRAVITY — PRE-SUBMISSION VALIDATOR           ║"
+	@echo "╚══════════════════════════════════════════════════════════╝"
+	@echo ""
+	@PASS=0; FAIL=0; FAILURES=""; \
+	\
+	echo "  [1/8] API Gateway health..."; \
+	if curl -sf http://localhost:3000/health > /dev/null 2>&1; then echo "  ✅ PASS — API Gateway (3000)"; PASS=$$((PASS+1)); else echo "  ❌ FAIL — API Gateway (3000) not responding"; FAIL=$$((FAIL+1)); FAILURES="$$FAILURES\n  - API Gateway"; fi; \
+	\
+	echo "  [2/8] ML Service health..."; \
+	if curl -sf http://localhost:8000/health > /dev/null 2>&1; then echo "  ✅ PASS — ML Service (8000)"; PASS=$$((PASS+1)); else echo "  ❌ FAIL — ML Service (8000) not responding"; FAIL=$$((FAIL+1)); FAILURES="$$FAILURES\n  - ML Service"; fi; \
+	\
+	echo "  [3/8] SafetyNet health..."; \
+	if curl -sf http://localhost:8001/health > /dev/null 2>&1; then echo "  ✅ PASS — SafetyNet (8001)"; PASS=$$((PASS+1)); else echo "  ❌ FAIL — SafetyNet (8001) not responding"; FAIL=$$((FAIL+1)); FAILURES="$$FAILURES\n  - SafetyNet"; fi; \
+	\
+	echo "  [4/8] Navigation graph seeded..."; \
+	NAV_RESP=$$(curl -sf -H "Authorization: Bearer DEMO_SYSTEM_INTERNAL" http://localhost:3000/api/v1/nav/graph 2>/dev/null); \
+	if echo "$$NAV_RESP" | grep -q '"nodes"'; then echo "  ✅ PASS — Nav graph has nodes"; PASS=$$((PASS+1)); else echo "  ❌ FAIL — Nav graph empty or unavailable"; FAIL=$$((FAIL+1)); FAILURES="$$FAILURES\n  - Nav graph not seeded"; fi; \
+	\
+	echo "  [5/8] Crush detection (simulate-alert)..."; \
+	CRUSH_RESP=$$(curl -sf -X POST http://localhost:8001/api/v1/safety/simulate-alert -H "Content-Type: application/json" -d '{"zone_id":"east-stand","venue_id":"manchester-arena","current_density":6.5,"avg_velocity_mps":0.2,"floor":1}' 2>/dev/null); \
+	if echo "$$CRUSH_RESP" | grep -qE '"crush_risk_score"|"status"'; then echo "  ✅ PASS — Crush detection responds"; PASS=$$((PASS+1)); else echo "  ❌ FAIL — Crush detection not responding"; FAIL=$$((FAIL+1)); FAILURES="$$FAILURES\n  - Crush detection"; fi; \
+	\
+	echo "  [6/8] ML explain-crush inference..."; \
+	EXPLAIN_RESP=$$(curl -sf "http://localhost:8000/ml/predict/explain-crush?density=6.5&velocity=0.2&convergence=0.8&acceleration=0.6" 2>/dev/null); \
+	if echo "$$EXPLAIN_RESP" | grep -q '"crush_risk_score"'; then echo "  ✅ PASS — explain-crush returns valid score"; PASS=$$((PASS+1)); else echo "  ❌ FAIL — explain-crush not returning crush_risk_score"; FAIL=$$((FAIL+1)); FAILURES="$$FAILURES\n  - explain-crush ML inference"; fi; \
+	\
+	echo "  [7/8] AI command interface..."; \
+	AI_RESP=$$(curl -sf -X POST http://localhost:3000/api/v1/ai/command -H "Content-Type: application/json" -H "Authorization: Bearer DEMO_SYSTEM_INTERNAL" -d '{"query":"Is East Stand safe right now?"}' 2>/dev/null); \
+	if echo "$$AI_RESP" | grep -q '"answer"'; then echo "  ✅ PASS — AI command interface responds"; PASS=$$((PASS+1)); else echo "  ❌ FAIL — AI command interface not returning answer"; FAIL=$$((FAIL+1)); FAILURES="$$FAILURES\n  - AI command interface"; fi; \
+	\
+	echo "  [8/8] Python test suite..."; \
+	if cd services/safety-service && python -m pytest tests/ -q 2>/dev/null | grep -q "passed"; then echo "  ✅ PASS — Python tests pass"; PASS=$$((PASS+1)); else echo "  ❌ FAIL — Python tests failing"; FAIL=$$((FAIL+1)); FAILURES="$$FAILURES\n  - Python test suite"; fi; \
+	\
+	echo ""; \
+	echo "══════════════════════════════════════════════════════════"; \
+	echo "  RESULT: $$PASS/8 checks passed"; \
+	echo "══════════════════════════════════════════════════════════"; \
+	if [ "$$PASS" = "8" ]; then \
+		echo "  🎯 ANTIGRAVITY IS SUBMISSION READY"; \
+	else \
+		echo "  ⚠️  FAILED CHECKS:"; \
+		printf "$$FAILURES\n"; \
+	fi; \
+	echo "══════════════════════════════════════════════════════════"; \
+	echo ""

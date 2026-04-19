@@ -1,9 +1,40 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useOpsStore } from '../../store/ops';
 import { Bell, Trophy, Clock, MapPin, Shield } from 'lucide-react';
+import { getDemoHeaders } from '../../services/socket';
 
 export default function Home({ setRoute }) {
   const { userPoints, userTier, queues, alerts, connectionStatus } = useOpsStore();
+  const [aiQuery, setAiQuery] = useState('');
+  const [aiAnswer, setAiAnswer] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  const handleAskAI = async (e) => {
+    e.preventDefault();
+    if (!aiQuery.trim()) return;
+    
+    setAiLoading(true);
+    setAiAnswer(null);
+
+    try {
+      const res = await fetch('/api/v1/ai/command', {
+        method: 'POST',
+        headers: getDemoHeaders(),
+        body: JSON.stringify({ query: aiQuery, context: { mobile: true } })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAiAnswer(data.answer);
+      } else {
+        setAiAnswer('Sorry, AI is currently unavailable.');
+      }
+    } catch {
+      setAiAnswer('Connection error. Please try again.');
+    }
+    setAiLoading(false);
+    setAiQuery('');
+  };
+
   const topQueue = queues[0];
   const activeAlert = alerts[0] || null;
 
@@ -90,6 +121,33 @@ export default function Home({ setRoute }) {
             <span className="text-xs font-bold mt-1">Safety</span>
             <span className="text-[9px] font-mono text-[var(--ag-text-secondary)]">Assistance</span>
          </button>
+       </div>
+
+       {/* Ask ANTIGRAVITY */}
+       <div className="bg-[var(--ag-bg-card)] rounded-xl p-4 border border-[var(--ag-border-subtle)] flex flex-col gap-3 mt-2 mb-20 relative">
+         <span className="text-xs font-mono tracking-widest text-[var(--ag-cyan)] uppercase">Ask Antigravity</span>
+         <form onSubmit={handleAskAI} className="relative">
+           <input 
+             type="text" 
+             value={aiQuery}
+             onChange={e=>setAiQuery(e.target.value)}
+             placeholder="Ask about queues, exits, safety..." 
+             className="w-full bg-black/40 border border-white/10 rounded-lg p-3 pr-10 text-sm text-white placeholder-gray-500 focus:border-[var(--ag-cyan)] focus:outline-none transition-colors"
+           />
+           <button type="submit" disabled={aiLoading} className="absolute right-2 top-2 p-1.5 text-[var(--ag-cyan)] hover:bg-[var(--ag-cyan)]/10 rounded">
+             {aiLoading ? <div className="w-4 h-4 border-2 border-[var(--ag-cyan)] border-t-transparent rounded-full animate-spin"></div> : <span className="font-bold">→</span>}
+           </button>
+         </form>
+         
+         {aiAnswer && (
+           <div className="bg-[var(--ag-cyan)]/5 border border-[var(--ag-cyan)]/20 rounded-lg p-3 mt-1 animate-[ag-slide-in_0.3s_ease-out]">
+             <div className="flex items-center gap-2 mb-1">
+                <div className="w-1.5 h-1.5 bg-[var(--ag-cyan)] rounded-full animate-pulse"></div>
+                <span className="text-[10px] font-mono text-[var(--ag-cyan)] font-bold tracking-widest uppercase">Antigravity AI</span>
+             </div>
+             <p className="text-sm leading-relaxed text-gray-200 whitespace-pre-line">{aiAnswer}</p>
+           </div>
+         )}
        </div>
     </div>
   );

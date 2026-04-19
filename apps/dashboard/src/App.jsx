@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import CommandCenter from './pages/CommandCenter';
 import MobileContainer from './pages/mobile/MobileContainer';
 import Home from './pages/mobile/Home';
@@ -10,12 +10,23 @@ import { socketService } from './services/socket';
 import { useOpsStore } from './store/ops';
 
 export default function App() {
+  // Parse URL params for judge-friendly auto-start
+  const params = new URLSearchParams(window.location.search);
+  const autoDemo   = params.get('demo')   === 'true';
+  const autoMobile = params.get('mobile') === 'true';
+
   // Primary view: 'dashboard' or 'mobile'
-  const [view, setView] = useState(
-    window.location.pathname.startsWith('/mobile') ? 'mobile' : 'dashboard'
-  );
+  const [view, setView] = useState(() => {
+    if (autoMobile) return 'mobile';
+    if (window.location.pathname.startsWith('/mobile')) return 'mobile';
+    return 'dashboard';
+  });
+
   // Internal route within the mobile container
   const [mobileRoute, setMobileRoute] = useState('home');
+
+  // Ref filled by CommandCenter so App can trigger startDemo externally
+  const demoRef = useRef(null);
 
   // Sync token state ticks based on intervals (for queue updates)
   useEffect(() => {
@@ -25,8 +36,17 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // Auto-demo: 3 second delay then fire
+  useEffect(() => {
+    if (!autoDemo || view !== 'dashboard') return;
+    const t = setTimeout(() => {
+      demoRef.current?.start?.();
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [autoDemo, view]);
+
   if (view === 'dashboard') {
-    return <CommandCenter setView={setView} />;
+    return <CommandCenter setView={setView} demoRef={demoRef} />;
   }
 
   // Mobile view — resolve component

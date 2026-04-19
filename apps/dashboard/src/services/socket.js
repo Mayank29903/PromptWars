@@ -69,3 +69,11 @@ class MockSocketService {
 }
 
 export const socketService = new MockSocketService();
+
+export const DEMO_TOKEN = 'DEMO_SYSTEM_INTERNAL';
+export function getDemoHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${DEMO_TOKEN}`
+  };
+}

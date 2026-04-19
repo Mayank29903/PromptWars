@@ -5,7 +5,8 @@
   "main": "src/app.js",
   "scripts": {
     "dev": "node --watch src/app.js",
-    "start": "node src/app.js"
+    "start": "node src/app.js",
+    "lint": "eslint src/ --ext .js"
   },
   "dependencies": {
     "socket.io": "^4.7.5",

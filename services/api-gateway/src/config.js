@@ -24,7 +24,12 @@ export const config = {
     timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60000', 10)
   },
   services: {
-    ml: process.env.ML_SERVICE_URL || 'http://localhost:8000',
-    realtime: process.env.REALTIME_SERVICE_URL || 'http://localhost:3001'
+    ml:       process.env.ML_SERVICE_URL       || 'http://localhost:8000',
+    realtime: process.env.REALTIME_SERVICE_URL || 'http://localhost:3001',
+    safety:   process.env.SAFETY_SERVICE_URL   || 'http://localhost:8001',
+    predict:  process.env.PREDICT_SERVICE_URL  || 'http://localhost:8003'
+  },
+  gemini: {
+    key: process.env.GEMINI_API_KEY || ''
   }
 };

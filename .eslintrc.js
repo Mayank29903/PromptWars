@@ -8,7 +8,10 @@ module.exports = {
   extends: ["eslint:recommended"],
   parserOptions: {
     ecmaVersion: "latest",
-    sourceType: "module"
+    sourceType: "module",
+    ecmaFeatures: {
+      jsx: true
+    }
   },
   rules: {
     "no-unused-vars": "warn"

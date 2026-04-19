@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getDemoHeaders } from '../services/socket';
 
 // Initial data models based on Part 2 specification
 
@@ -115,7 +116,7 @@ export const useOpsStore = create((set) => ({
 
       const res = await fetch('/api/v1/predict/simulation', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getDemoHeaders(),
         body: JSON.stringify({ event_id: 'evt-premier-league-finals-001', n_runs: 10, n_agents: 1000 }),
         signal: controller.signal
       });
