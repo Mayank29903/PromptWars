@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node --watch src/app.js",
     "start": "node src/app.js",
+    "test": "vitest run",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "node prisma/seed.js",
@@ -28,6 +29,7 @@
     "uuid": "^10.0.0"
   },
   "devDependencies": {
-    "prisma": "^5.14.0"
+    "prisma": "^5.14.0",
+    "vitest": "^1.6.0"
   }
 }

@@ -25,14 +25,35 @@ jobs:
         with:
           version: 8
 
-      - name: Install Dependencies
+      - name: Install Node Dependencies
         run: pnpm install
 
       - name: Lint
         run: pnpm lint
 
-      - name: Test
+      - name: Node Tests
         run: pnpm test
 
       - name: Build
         run: pnpm turbo run build
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python Test Dependencies
+        run: |
+          pip install pytest pytest-asyncio
+          pip install -r services/safety-service/requirements.txt
+          pip install -r services/fan-pulse-service/requirements.txt
+          pip install -r services/predict-engine/requirements.txt
+
+      - name: Python Tests — Safety Service
+        run: python -m pytest services/safety-service/tests/ -v
+
+      - name: Python Tests — Fan Pulse Service
+        run: python -m pytest services/fan-pulse-service/tests/ -v
+
+      - name: Python Tests — Predict Engine
+        run: python -m pytest services/predict-engine/tests/ -v
