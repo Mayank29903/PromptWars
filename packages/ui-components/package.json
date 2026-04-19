@@ -1,0 +1,9 @@
+{
+  "name": "@ag/ui-components",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "lint": "eslint .",
+    "type-check": "echo 'No types in CSS package'"
+  }
+}

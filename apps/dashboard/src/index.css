@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+/* Injecting the pure CSS variables directly */
+@import "../../../packages/ui-components/src/design-tokens.css";
+
+/* Configure Tailwind v4 Theme Variables to adopt our CSS namespace */
+@theme {
+  --color-ag-bg-primary: var(--ag-bg-primary);
+  --color-ag-bg-card: var(--ag-bg-card);
+  --color-ag-bg-elevated: var(--ag-bg-elevated);
+  --color-ag-bg-panel: var(--ag-bg-panel);
+  --color-ag-cyan: var(--ag-cyan);
+  --color-ag-amber: var(--ag-amber);
+  --color-ag-red: var(--ag-red);
+  --color-ag-green: var(--ag-green);
+  --color-ag-purple: var(--ag-purple);
+  --color-ag-text-primary: var(--ag-text-primary);
+  --color-ag-text-secondary: var(--ag-text-secondary);
+  
+  --font-mono: var(--ag-font-mono);
+  --font-ui: var(--ag-font-ui);
+}
+
+html, body, #root {
+  height: 100%;
+}

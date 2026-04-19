@@ -1,0 +1,349 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  ATTENDEE
+  GATE_OFFICER
+  FOOD_MANAGER
+  SECURITY_LEAD
+  VENUE_MANAGER
+  SUPER_ADMIN
+}
+
+enum EventStatus {
+  UPCOMING
+  LIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum ZoneType {
+  ENTRY
+  CORRIDOR
+  STAND
+  FOOD_COURT
+  RESTROOM_AREA
+  EXIT
+  PITCH
+}
+
+enum NodeType {
+  WALKABLE_JUNCTION
+  ELEVATOR
+  ESCALATOR
+  STAIRS
+  POI_ENTRANCE
+  GATE
+}
+
+enum PoiCategory {
+  FOOD
+  RESTROOM
+  MERCHANDISE
+  MEDICAL
+  EXIT
+  ATM
+  SEATING
+  FIRST_AID
+  FAMILY
+}
+
+enum QueueType {
+  ENTRY
+  FOOD
+  RESTROOM
+  MERCHANDISE
+  MEDICAL
+  PARKING
+}
+
+enum TokenStatus {
+  IDLE
+  WAITING
+  CALLED
+  GRACE_PERIOD
+  USED
+  EXPIRED
+  CANCELLED
+}
+
+enum FanTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+enum RewardCategory {
+  FOOD
+  MERCHANDISE
+  UPGRADE
+  EXPERIENCE
+  DIGITAL
+}
+
+enum IncidentType {
+  CROWD_CRUSH
+  FIGHT
+  MEDICAL
+  FIRE
+  THEFT
+  GENERAL
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentStatus {
+  OPEN
+  RESPONDING
+  RESOLVED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TaskStatus {
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum AlertLevel {
+  NORMAL
+  CAUTION
+  WARNING
+  CRITICAL
+}
+
+model User {
+  id             String    @id @default(uuid())
+  email          String    @unique
+  hashedPassword String
+  role           UserRole  @default(ATTENDEE)
+  firstName      String
+  lastName       String
+  phone          String?
+  fcmToken       String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  lastLogin      DateTime?
+
+  fanProfile        FanProfile?
+  reportedIncidents Incident[]
+  assignedTasks     StaffTask[]   @relation("AssignedTasks")
+  createdTasks      StaffTask[]   @relation("CreatedTasks")
+
+  @@map("users")
+}
+
+model Venue {
+  id            String   @id @default(uuid())
+  name          String
+  totalCapacity Int
+  address       String
+  city          String
+  geofence      Json
+  totalFloors   Int      @default(1)
+  config        Json     @default("{}")
+  createdAt     DateTime @default(now())
+
+  events      Event[]
+  crowdZones  CrowdZone[]
+  queuePoints QueuePoint[]
+  floors      VenueFloor[]
+
+  @@map("venues")
+}
+
+model VenueFloor {
+  id           String  @id @default(uuid())
+  venueId      String
+  floorNumber  Int
+  mapSvgUrl    String?
+  mapGeojsonUrl String?
+  beaconCount  Int     @default(0)
+
+  venue Venue @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  @@unique([venueId, floorNumber])
+  @@index([venueId])
+  @@map("venue_floors")
+}
+
+model Event {
+  id                 String      @id @default(uuid())
+  venueId            String
+  name               String
+  sport              String
+  homeTeam           String
+  awayTeam           String
+  rivalryIndex       Float       @default(0.5)
+  startTime          DateTime
+  endTime            DateTime?
+  expectedAttendance Int
+  status             EventStatus @default(UPCOMING)
+  createdAt          DateTime    @default(now())
+
+  venue             Venue              @relation(fields: [venueId], references: [id])
+  virtualTokens     VirtualToken[]
+  incidents         Incident[]
+  staffTasks        StaffTask[]
+  pointTransactions PointTransaction[]
+
+  @@index([venueId])
+  @@index([status])
+  @@index([startTime])
+  @@map("events")
+}
+
+model CrowdZone {
+  id             String   @id @default(uuid())
+  venueId        String
+  floor          Int
+  name           String
+  polygonCoords  Json
+  maxSafeDensity Float    @default(4.5)
+  maxCapacity    Int
+  type           ZoneType
+
+  venue Venue @relation(fields: [venueId], references: [id])
+
+  @@index([venueId])
+  @@index([floor])
+  @@map("crowd_zones")
+}
+
+model QueuePoint {
+  id                        String    @id @default(uuid())
+  venueId                   String
+  name                      String
+  type                      QueueType
+  floor                     Int
+  locationCoords            Json
+  maxServers                Int       @default(1)
+  avgServiceRatePerServer   Float     @default(3.0)
+
+  venue         Venue          @relation(fields: [venueId], references: [id])
+  virtualTokens VirtualToken[]
+
+  @@index([venueId])
+  @@index([type])
+  @@map("queue_points")
+}
+
+model VirtualToken {
+  id                String      @id @default(uuid())
+  userId            String
+  queuePointId      String
+  eventId           String
+  issuedAt          DateTime    @default(now())
+  estimatedCallTime DateTime
+  calledAt          DateTime?
+  usedAt            DateTime?
+  status            TokenStatus @default(WAITING)
+  positionInQueue   Int
+
+  user       User       @relation(fields: [userId], references: [id])
+  queuePoint QueuePoint @relation(fields: [queuePointId], references: [id])
+  event      Event      @relation(fields: [eventId], references: [id])
+
+  @@index([userId])
+  @@index([queuePointId, status])
+  @@index([eventId])
+  @@map("virtual_tokens")
+}
+
+model FanProfile {
+  id                   String   @id
+  totalLifetimePoints  Int      @default(0)
+  currentBalancePoints Int      @default(0)
+  tier                 FanTier  @default(BRONZE)
+  eventsAttended       Int      @default(0)
+  achievements         Json     @default("[]")
+  streakDays           Int      @default(0)
+  updatedAt            DateTime @updatedAt
+
+  user              User               @relation(fields: [id], references: [id])
+  pointTransactions PointTransaction[]
+
+  @@map("fan_profiles")
+}
+
+model PointTransaction {
+  id                String   @id @default(uuid())
+  userId            String
+  eventId           String
+  actionType        String
+  pointsEarned      Int
+  multiplierApplied Float    @default(1.0)
+  balanceAfter      Int
+  createdAt         DateTime @default(now())
+
+  fanProfile FanProfile @relation(fields: [userId], references: [id])
+  event      Event      @relation(fields: [eventId], references: [id])
+
+  @@index([userId])
+  @@index([eventId])
+  @@index([createdAt])
+  @@map("point_transactions")
+}
+
+model Incident {
+  id           String         @id @default(uuid())
+  eventId      String
+  zoneId       String
+  reportedById String
+  type         IncidentType
+  severity     Severity
+  description  String
+  status       IncidentStatus @default(OPEN)
+  mediaUrls    String[]
+  createdAt    DateTime       @default(now())
+  resolvedAt   DateTime?
+
+  event      Event @relation(fields: [eventId], references: [id])
+  reportedBy User  @relation(fields: [reportedById], references: [id])
+
+  @@index([eventId])
+  @@index([status])
+  @@index([severity])
+  @@map("incidents")
+}
+
+model StaffTask {
+  id           String     @id @default(uuid())
+  assignedToId String
+  eventId      String
+  zoneId       String
+  type         String
+  priority     Priority   @default(MEDIUM)
+  status       TaskStatus @default(ASSIGNED)
+  notes        String?
+  createdById  String
+  createdAt    DateTime   @default(now())
+  completedAt  DateTime?
+
+  assignedTo User  @relation("AssignedTasks", fields: [assignedToId], references: [id])
+  createdBy  User  @relation("CreatedTasks", fields: [createdById], references: [id])
+  event      Event @relation(fields: [eventId], references: [id])
+
+  @@index([assignedToId])
+  @@index([eventId, status])
+  @@map("staff_tasks")
+}

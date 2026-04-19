@@ -1,0 +1,141 @@
+/* Pure CSS values - No old Tailwind directives */
+
+:root {
+  --ag-bg-primary: #020810;
+  --ag-bg-card: #05101e;
+  --ag-bg-elevated: #091828;
+  --ag-bg-panel: #0e2240;
+  --ag-cyan: #00d4ff;
+  --ag-cyan-glow: rgba(0, 212, 255, 0.15);
+  --ag-cyan-dim: rgba(0, 212, 255, 0.07);
+  --ag-amber: #f5a020;
+  --ag-red: #ff3d54;
+  --ag-green: #00e09e;
+  --ag-purple: #7b5ea7;
+  --ag-text-primary: #b0cce4;
+  --ag-text-secondary: #3a5872;
+  --ag-text-tertiary: #1a3050;
+  --ag-border-subtle: rgba(0, 212, 255, 0.08);
+  --ag-border-normal: rgba(0, 212, 255, 0.15);
+  --ag-border-active: rgba(0, 212, 255, 0.35);
+  --ag-font-mono: 'Courier New', Courier, monospace;
+  --ag-font-ui: 'Trebuchet MS', 'Lucida Grande', Tahoma, sans-serif;
+}
+
+body {
+  background-color: var(--ag-bg-primary);
+  color: var(--ag-text-primary);
+  font-family: var(--ag-font-ui);
+}
+
+@keyframes ag-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
+@keyframes ag-pulse-ring {
+  0% { transform: scale(0.85); opacity: 0.7; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+@keyframes ag-scan {
+  0% { top: 0; }
+  100% { top: 100%; }
+}
+
+@keyframes ag-slide-in {
+  from { transform: translateX(12px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+@keyframes ag-glow-num {
+  0%, 100% { text-shadow: 0 0 10px var(--ag-cyan); }
+  50% { text-shadow: 0 0 24px var(--ag-cyan), 0 0 48px rgba(0, 212, 255, 0.3); }
+}
+
+@keyframes ag-ticker {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+@keyframes ag-emergency-flash {
+  0%, 100% { background: var(--ag-bg-primary); }
+  50% { background: rgba(255, 61, 84, 0.08); }
+}
+
+.ag-card {
+  background: var(--ag-bg-card);
+  border: 1px solid var(--ag-border-subtle);
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+}
+
+.ag-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+}
+
+.ag-card--cyan::before { background: var(--ag-cyan); }
+.ag-card--amber::before { background: var(--ag-amber); }
+.ag-card--red::before { background: var(--ag-red); }
+.ag-card--green::before { background: var(--ag-green); }
+
+.ag-metric-value {
+  font-family: var(--ag-font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  animation: ag-glow-num 3s ease-in-out infinite;
+}
+
+.ag-label {
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  color: var(--ag-text-secondary);
+  text-transform: uppercase;
+}
+
+.ag-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ag-red);
+  animation: ag-blink 1s ease-in-out infinite;
+}
+
+.ag-status-dot--active {
+  background: var(--ag-green);
+  box-shadow: 0 0 7px var(--ag-green);
+  animation: none;
+  position: relative;
+}
+
+.ag-status-dot--active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: inherit;
+  animation: ag-pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+
+.ag-status-dot--warning {
+  background: var(--ag-amber);
+  animation: ag-blink 0.7s ease-in-out infinite;
+}
+
+.ag-status-dot--critical {
+  background: var(--ag-red);
+  animation: ag-blink 0.4s ease-in-out infinite;
+}
+
+.ag-grid-bg {
+  background-image: 
+    linear-gradient(rgba(0, 212, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 212, 255, 0.022) 1px, transparent 1px);
+  background-size: 34px 34px;
+}
