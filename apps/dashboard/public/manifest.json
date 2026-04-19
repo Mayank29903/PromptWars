@@ -1,0 +1,20 @@
+{
+  "name": "ANTIGRAVITY",
+  "short_name": "ANTIGRAVITY",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#010a14",
+  "theme_color": "#010a14",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath fill='%2300D4FF' d='M384 192h-96L352 0 128 288h96l-64 224 224-320z'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath fill='%2300D4FF' d='M384 192h-96L352 0 128 288h96l-64 224 224-320z'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}

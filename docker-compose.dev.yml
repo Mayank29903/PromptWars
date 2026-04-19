@@ -1,5 +1,10 @@
 version: "3.9"
+
 services:
+  # ═══════════════════════════════════════════════════════════════════
+  #  INFRASTRUCTURE
+  # ═══════════════════════════════════════════════════════════════════
+
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -14,6 +19,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -25,6 +31,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     restart: unless-stopped
@@ -33,7 +40,7 @@ services:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: "broker,controller"
       KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
-      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:9092"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
       KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
       KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
       KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
@@ -41,6 +48,32 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       CLUSTER_ID: "antigravity-kafka-cluster-01"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.0
+    depends_on:
+      kafka: { condition: service_healthy }
+    restart: "on-failure"
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "Creating Kafka topics..."
+        kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic crowd.density.updates --partitions 3 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic safety.alert.stream --partitions 3 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic fan.behavior.events --partitions 3 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic queue.updates --partitions 3 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic ops.incidents --partitions 3 --replication-factor 1
+        echo "All Kafka topics created."
+
+  # ═══════════════════════════════════════════════════════════════════
+  #  CORE SERVICES
+  # ═══════════════════════════════════════════════════════════════════
+
   api-gateway:
     build: ./services/api-gateway
     restart: unless-stopped
@@ -50,10 +83,160 @@ services:
       REDIS_URL: redis://redis:6379
       KAFKA_BROKERS: kafka:9092
       NODE_ENV: development
-    env_file: ./services/api-gateway/.env
     depends_on:
-      postgres: {condition: service_healthy}
-      redis: {condition: service_healthy}
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  realtime-service:
+    build: ./services/realtime-service
+    restart: unless-stopped
+    ports: ["3001:3001"]
+    environment:
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:9092
+      PORT: 3001
+      CORS_ORIGINS: "http://localhost:5173"
+    depends_on:
+      redis: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+      api-gateway: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ═══════════════════════════════════════════════════════════════════
+  #  PYTHON MICROSERVICES
+  # ═══════════════════════════════════════════════════════════════════
+
+  safety-service:
+    build: ./services/safety-service
+    restart: unless-stopped
+    ports: ["8001:8001"]
+    environment:
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:9092
+      API_GATEWAY_URL: http://api-gateway:3000
+      REALTIME_SERVICE_URL: http://realtime-service:3001
+      PORT: 8001
+    depends_on:
+      redis: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+      realtime-service: { condition: service_healthy }
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8001
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  fan-pulse-service:
+    build: ./services/fan-pulse-service
+    restart: unless-stopped
+    ports: ["8002:8002"]
+    environment:
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:9092
+      DATABASE_URL: postgresql://admin:password@postgres:5432/antigravity
+      PORT: 8002
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8002
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8002/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  predict-engine:
+    build: ./services/predict-engine
+    restart: unless-stopped
+    ports: ["8003:8003"]
+    environment:
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://admin:password@postgres:5432/antigravity
+      PORT: 8003
+    depends_on:
+      redis: { condition: service_healthy }
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8003
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8003/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ml-service:
+    build: ./services/ml-service
+    restart: unless-stopped
+    ports: ["8000:8000"]
+    environment:
+      REDIS_URL: redis://redis:6379
+      PORT: 8000
+    depends_on:
+      redis: { condition: service_healthy }
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  edge-processor:
+    build: ./services/edge-processor
+    restart: unless-stopped
+    ports: ["3002:3002"]
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      REDIS_URL: redis://redis:6379
+      PORT: 3002
+    depends_on:
+      kafka: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3002/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  notification-service:
+    build: ./services/notification-service
+    restart: unless-stopped
+    ports: ["3003:3003"]
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      PORT: 3003
+    depends_on:
+      kafka: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3003/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ═══════════════════════════════════════════════════════════════════
+  #  FRONTEND
+  # ═══════════════════════════════════════════════════════════════════
+
+  dashboard:
+    build: ./apps/dashboard
+    restart: unless-stopped
+    ports: ["5173:5173"]
+    environment:
+      VITE_API_URL: http://localhost:3000
+      VITE_WS_URL: http://localhost:3001
+    depends_on:
+      api-gateway: { condition: service_healthy }
+      realtime-service: { condition: service_healthy }
+
 volumes:
   postgres_data: {}
   redis_data: {}

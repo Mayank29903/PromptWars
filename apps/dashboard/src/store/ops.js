@@ -16,6 +16,7 @@ const initialZones = [
 
 const initialQueues = [
   { id: 'gate-a', name: 'Gate A – Main Entry', wait_max: 30, initial: 22, current_wait: 22 },
+  { id: 'east-stand', name: 'East Stand', wait_max: 30, initial: 20, current_wait: 20 },
   { id: 'gate-b', name: 'Gate B – North', wait_max: 30, initial: 8, current_wait: 8 },
   { id: 'food-w', name: 'Food Court West', wait_max: 30, initial: 18, current_wait: 18 },
   { id: 'rest-l1', name: 'Restrooms L1', wait_max: 30, initial: 4, current_wait: 4 },
@@ -47,6 +48,8 @@ export const useOpsStore = create((set) => ({
   emergencyMode: false,
   timelinePosition: 0, 
   systemModuleStatuses: moduleStatus,
+  connectionStatus: 'connecting',
+  predictData: null,
 
   // FanPulse & SmartQueue State
   userPoints: 1240,
@@ -70,12 +73,29 @@ export const useOpsStore = create((set) => ({
   setPredictMode: (mode) => set({ predictMode: mode }),
   setEmergencyMode: (mode) => set({ emergencyMode: mode }),
   setTimelinePosition: (pos) => set({ timelinePosition: pos }),
+  setConnectionStatus: (status) => set({ connectionStatus: status }),
+  setPredictData: (data) => set({ predictData: data }),
   updateSystemLatency: (key, latency) => set((state) => ({
     systemModuleStatuses: {
       ...state.systemModuleStatuses,
       [key]: { ...state.systemModuleStatuses[key], current: latency }
     }
   })),
+
+  loadPredictData: async () => {
+    try {
+      const res = await fetch('/api/v1/predict/simulation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event_id: 'evt-premier-league-finals-001', n_runs: 10, n_agents: 1000 })
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      set({ predictData: data });
+    } catch (err) {
+      console.error("Failed to load predict data", err);
+    }
+  },
 
   addPoints: (amount, reason) => set(state => {
     let newPoints = state.userPoints + amount;
@@ -108,3 +128,16 @@ export const useOpsStore = create((set) => ({
     })
   }))
 }));
+
+// Simulate East Stand fluctuations
+setInterval(() => {
+  useOpsStore.setState(state => ({
+    queues: state.queues.map(q => {
+      if (q.id === 'east-stand') {
+        const fluctuate = Math.floor(Math.random() * (24 - 18 + 1)) + 18; 
+        return { ...q, current_wait: fluctuate };
+      }
+      return q;
+    })
+  }));
+}, 4000);

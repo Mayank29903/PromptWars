@@ -1,4 +1,14 @@
 {
-  "name": "edge-processor",
-  "version": "1.0.0"
+  "name": "@ag/edge-processor",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev":   "node --watch src/index.js"
+  },
+  "dependencies": {
+    "kafkajs": "^2.2.4",
+    "ioredis":  "^5.3.2"
+  }
 }

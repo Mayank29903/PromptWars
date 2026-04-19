@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useOpsStore } from '../store/ops';
 import { useClock } from '../utils/hooks';
 import { HeatmapCanvas } from '../components/HeatmapCanvas';
@@ -23,7 +23,7 @@ function Header() {
   const currentAi = aiPillData[aiState];
 
   return (
-    <div className="h-[50px] flex items-center justify-between px-4 border-b border-[var(--ag-border-normal)] bg-[var(--ag-bg-panel)] z-10 w-full">
+    <div className="h-[50px] flex items-center justify-between px-4 border-b border-[var(--ag-border-normal)] bg-[var(--ag-bg-panel)] z-10 w-full shrink-0">
       {/* Left */}
       <div className="flex items-center gap-3">
         <div className="w-[6px] h-6 bg-[var(--ag-cyan)]"></div>
@@ -71,13 +71,12 @@ function MetricsRow() {
   const [attendees, setAttendees] = useState(41293);
 
   useEffect(() => {
-    // Attendees count up increment from spec
     const it = setInterval(() => setAttendees(p => p + Math.floor(Math.random()*5)), 3200);
     return () => clearInterval(it);
   }, []);
 
   return (
-    <div className="h-[72px] grid grid-cols-4 gap-4 px-4 py-2 bg-transparent z-10 w-full relative">
+    <div className="h-[72px] grid grid-cols-4 gap-4 px-4 py-2 bg-transparent z-10 w-full relative shrink-0">
       <MetricCard label="TOTAL ATTENDEES" value={attendees.toLocaleString()} subtext="↑ 218 in last 5min" color="cyan" />
       <MetricCard label="AVG WAIT TIME" value="8.2m" subtext="Gate A: 22min ⚠" color="amber" />
       <MetricCard label="SAFETY SCORE" value={emergencyMode ? "CRITICAL" : "94"} subtext={emergencyMode ? "Evacuation in progress" : "Optimal · 0 critical zones"} color={emergencyMode ? "red" : "green"} />
@@ -96,21 +95,150 @@ function MetricCard({ label, value, subtext, color, pulse }) {
         <span className="font-mono text-2xl font-bold leading-none" style={{ color: `var(--ag-${color})`, textShadow: `0 0 10px var(--ag-${color})` }}>{value}</span>
         <span className="text-[10px] text-[var(--ag-text-secondary)]">{subtext}</span>
       </div>
-      {/* Corner Bracket */}
       <div className="absolute bottom-0 right-0 w-[7px] h-[7px] pointer-events-none opacity-25" style={{ borderBottom: `1.5px solid var(--ag-${color})`, borderRight: `1.5px solid var(--ag-${color})` }}></div>
     </div>
   );
+}
+
+function PredictPanel() {
+  const { predictMode, predictData, loadPredictData } = useOpsStore();
+  const canvasRef = useRef(null);
+  const [tooltip, setTooltip] = useState(null);
+
+  useEffect(() => {
+     if (predictMode && !predictData) loadPredictData();
+  }, [predictMode, predictData, loadPredictData]);
+
+  useEffect(() => {
+    if (!predictMode || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    
+    // Check if we have actual predictData or generate deterministic mock data for 48 ticks
+    const ticks = [];
+    for (let i = 0; i < 48; i++) {
+       const base = 0.5 + Math.sin(i / 10) * 0.3 + (Math.random() * 0.05);
+       ticks.push({ 
+         p25: Math.max(0.1, base * 0.8), 
+         p50: Math.max(0.1, base), 
+         p85: Math.min(1.0, base * 1.25) 
+       });
+    }
+
+    const render = () => {
+       ctx.clearRect(0, 0, canvas.width, canvas.height);
+       
+       ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+       ctx.lineWidth = 1;
+       ctx.beginPath();
+       for (let y = 0; y <= canvas.height; y += 25) {
+         ctx.moveTo(0, y);
+         ctx.lineTo(canvas.width, y);
+       }
+       ctx.stroke();
+
+       const barW = 4;
+       const gap = 2;
+       
+       const totalChartW = ticks.length * (barW * 3 + gap);
+       const startX = (canvas.width - totalChartW) / 2;
+       
+       ticks.forEach((t, i) => {
+          const x = startX + i * (barW * 3 + gap);
+          const ch = canvas.height - 10;
+          
+          const h85 = t.p85 * ch;
+          ctx.fillStyle = '#dc2626'; // P85 Red
+          ctx.fillRect(x, canvas.height - h85, barW, h85);
+          
+          const h50 = t.p50 * ch;
+          ctx.fillStyle = '#d97706'; // P50 Amber
+          ctx.fillRect(x + barW, canvas.height - h50, barW, h50);
+
+          const h25 = t.p25 * ch;
+          ctx.fillStyle = '#00e09e'; // P25 Green
+          ctx.fillRect(x + barW * 2, canvas.height - h25, barW, h25);
+       });
+
+       const currentTick = 12; // Example vertical line
+       const lineX = startX + currentTick * (barW * 3 + gap) + (barW * 1.5);
+       ctx.strokeStyle = '#dc2626';
+       ctx.lineWidth = 2;
+       ctx.setLineDash([4, 4]);
+       ctx.beginPath();
+       ctx.moveTo(lineX, 0);
+       ctx.lineTo(lineX, canvas.height);
+       ctx.stroke();
+       ctx.setLineDash([]);
+    };
+
+    render();
+
+    const handleMouseMove = (e) => {
+       const rect = canvas.getBoundingClientRect();
+       const x = e.clientX - rect.left;
+       const barW = 4;
+       const gap = 2;
+       const totalW = barW * 3 + gap;
+       const totalChartW = 48 * totalW;
+       const startX = (canvas.width - totalChartW) / 2;
+       
+       const tickIdx = Math.floor((x - startX) / totalW);
+       if (tickIdx >= 0 && tickIdx < 48) {
+         const t = ticks[tickIdx];
+         setTooltip({
+           x: e.clientX,
+           y: e.clientY,
+           tick: tickIdx,
+           min: tickIdx * 15,
+           val: (t.p50 * 100).toFixed(0)
+         });
+       } else {
+         setTooltip(null);
+       }
+    };
+    const handleMouseLeave = () => setTooltip(null);
+
+    canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('mouseleave', handleMouseLeave);
+    
+    return () => {
+      canvas.removeEventListener('mousemove', handleMouseMove);
+      canvas.removeEventListener('mouseleave', handleMouseLeave);
+    };
+  }, [predictMode, predictData]);
+
+  return (
+    <div className={`overflow-hidden transition-all duration-500 ease-in-out px-4 shrink-0 ${predictMode ? 'h-[120px] pb-4 opacity-100' : 'h-0 pb-0 opacity-0'}`}>
+       <div className="w-full h-full border border-[var(--ag-border-subtle)] bg-[var(--ag-bg-panel)] rounded flex flex-col relative px-4">
+          <div className="absolute top-2 left-4 text-xs font-mono text-[var(--ag-amber)] tracking-widest font-bold">PREDICT 48H: EAST STAND DENSITY FORECAST</div>
+          <div className="absolute top-2 right-4 text-[10px] font-mono text-[var(--ag-text-secondary)] flex gap-4">
+            <span><span className="inline-block w-2 h-2 bg-[var(--ag-red)] mr-1"></span>P85</span>
+            <span><span className="inline-block w-2 h-2 bg-[var(--ag-amber)] mr-1"></span>P50</span>
+            <span><span className="inline-block w-2 h-2 bg-[var(--ag-green)] mr-1"></span>P25</span>
+          </div>
+          <div className="flex-1 mt-6">
+            <canvas ref={canvasRef} width={800} height={70} className="w-full h-full" />
+          </div>
+          {tooltip && (
+             <div className="fixed bg-black/90 border border-[var(--ag-border-subtle)] text-white p-2 text-xs rounded z-50 pointer-events-none shadow-xl font-mono" style={{ left: tooltip.x + 15, top: tooltip.y + 15 }}>
+                <div className="text-[var(--ag-text-secondary)] border-b border-gray-800 pb-1 mb-1">Tick: {tooltip.tick} (T+{tooltip.min}m)</div>
+                <div className="text-[var(--ag-amber)]">P50 Density: {tooltip.val}%</div>
+             </div>
+          )}
+       </div>
+    </div>
+  )
 }
 
 function Sidebar() {
   const { systemModuleStatuses, queues } = useOpsStore();
 
   return (
-    <div className="w-[268px] flex flex-col gap-4">
-      {/* System Modules */}
-      <div className="ag-card p-3 flex-1">
+    <div className="w-[268px] flex flex-col gap-4 h-full">
+      <div className="ag-card p-3 flex-1 flex flex-col min-h-0">
         <span className="ag-label block border-b border-[var(--ag-border-subtle)] pb-2 mb-2">SYSTEM MODULES</span>
-        <div className="flex flex-col gap-[6px]">
+        <div className="flex flex-col gap-[6px] overflow-y-auto">
           {Object.values(systemModuleStatuses).map(mod => {
             const isWatch = mod.status === 'watch';
             return (
@@ -132,10 +260,9 @@ function Sidebar() {
         </div>
       </div>
 
-      {/* Queue Status */}
-      <div className="ag-card p-3 flex-1 flex flex-col">
+      <div className="ag-card p-3 flex-1 flex flex-col min-h-0">
         <span className="ag-label block border-b border-[var(--ag-border-subtle)] pb-2 mb-3">QUEUE STATUS</span>
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 overflow-y-auto">
           {queues.map(q => {
             const isRed = q.current_wait > 18;
             const isAmber = q.current_wait > 10;
@@ -144,7 +271,7 @@ function Sidebar() {
               <div key={q.id} className="flex flex-col gap-1">
                 <div className="flex justify-between items-center text-xs">
                   <span className="truncate">{q.name}</span>
-                  <span className="font-mono" style={{ color: `var(--ag-${cColor.replace('--ag-','')})` }}>{q.current_wait}m</span>
+                  <span className="font-mono" style={{ color: `var(${cColor})` }}>{q.current_wait}m</span>
                 </div>
                 <div className="h-[2px] w-full bg-[#0a1524]">
                   <div className="h-full transition-all duration-[4800ms] ease-in-out" style={{ width: `${(q.current_wait / q.wait_max) * 100}%`, backgroundColor: `var(${cColor})` }}></div>
@@ -242,6 +369,7 @@ export default function CommandCenter() {
     <div className={`w-screen h-screen m-0 p-0 overflow-hidden flex flex-col font-ui text-[var(--ag-text-primary)] ag-grid-bg transition-colors duration-1000`}>
       <Header />
       <MetricsRow />
+      <PredictPanel />
       
       {/* Main Area */}
       <div className="flex-1 flex px-4 pb-4 gap-[6px] relative overflow-hidden min-h-0">
@@ -258,7 +386,7 @@ export default function CommandCenter() {
              )}
              <button 
                 onClick={() => setPredictMode(!predictMode)} 
-                className={`px-3 py-1 text-xs border transition-colors focus:outline-none ${predictMode ? 'border-[var(--ag-amber)] text-[var(--ag-amber)] bg-amber-900/20 shadow-[0_0_10px_var(--ag-amber)]' : 'border-[var(--ag-cyan)] text-[var(--ag-cyan)] bg-transparent hover:bg-cyan-900/20'}`}>
+                className={`px-3 py-1 text-xs border transition-colors focus:outline-none ${predictMode ? 'border-[var(--ag-amber)] text-[var(--ag-amber)] bg-amber-900/40 shadow-[0_0_10px_var(--ag-amber)] font-bold' : 'border-[var(--ag-cyan)] text-[var(--ag-cyan)] bg-transparent hover:bg-cyan-900/20'}`}>
                PREDICT 30M
              </button>
            </div>
@@ -269,7 +397,6 @@ export default function CommandCenter() {
 
       <TimelineScrubber />
       <Ticker />
-      
       <EmergencyOverlay />
     </div>
   );

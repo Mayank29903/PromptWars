@@ -40,6 +40,8 @@ enum NodeType {
   STAIRS
   POI_ENTRANCE
   GATE
+  EXIT
+  EMERGENCY_VEHICLE_ONLY
 }
 
 enum PoiCategory {
@@ -163,10 +165,11 @@ model Venue {
   config        Json     @default("{}")
   createdAt     DateTime @default(now())
 
-  events      Event[]
-  crowdZones  CrowdZone[]
-  queuePoints QueuePoint[]
-  floors      VenueFloor[]
+  events          Event[]
+  crowdZones      CrowdZone[]
+  queuePoints     QueuePoint[]
+  floors          VenueFloor[]
+  navigationNodes NavigationNode[]
 
   @@map("venues")
 }
@@ -346,4 +349,21 @@ model StaffTask {
   @@index([assignedToId])
   @@index([eventId, status])
   @@map("staff_tasks")
+}
+
+model NavigationNode {
+  id               String   @id @default(uuid())
+  venueId          String
+  floorNumber      Int
+  name             String
+  nodeType         NodeType
+  coords           Json
+  connectedNodeIds String[]
+  isAccessible     Boolean  @default(true)
+
+  venue Venue @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  @@index([venueId])
+  @@index([nodeType])
+  @@map("navigation_nodes")
 }
