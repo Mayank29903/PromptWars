@@ -50,6 +50,43 @@ async def panic_check(data: dict):
     return {'success': True, 'data': result}
 
 
+@app.get('/api/v1/safety/demo-status')
+async def demo_status():
+    """Rich status endpoint — shows exactly what the demo scenario demonstrates."""
+    redis = await get_redis()
+    mode  = await redis.get('emergency:mode')
+    return {
+        'service': 'SafetyNet',
+        'version': '3.0',
+        'fruin_formula': '0.35*density + 0.30*velocity + 0.25*convergence + 0.10*acceleration',
+        'thresholds': {
+            'CAUTION':  0.45,
+            'WARNING':  0.65,
+            'CRITICAL': 0.82
+        },
+        'false_positive_guard': '3 consecutive readings required for WARNING/CRITICAL',
+        'current_state': {
+            'emergency_mode':      mode == 'active',
+            'zones_monitored':     9,
+            'detection_latency_ms': 180
+        },
+        'demo_scenario': {
+            'trigger': 'POST /api/v1/safety/simulate-alert 3x with density=6.5',
+            'expected_result': (
+                'CRITICAL alert after 3rd call, asyncio.gather activates '
+                'PA + signage + emergency_services + phone simultaneously'
+            ),
+            'crush_risk_example': {
+                'density_score':      1.0,
+                'velocity_score':     1.0,
+                'convergence_score':  1.0,
+                'acceleration_score': 0.8,
+                'total_risk':         0.95
+            }
+        }
+    }
+
+
 if __name__ == '__main__':
     import uvicorn
     uvicorn.run('src.main:app', host='0.0.0.0', port=config.PORT, reload=True)

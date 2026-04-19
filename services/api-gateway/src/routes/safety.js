@@ -75,4 +75,39 @@ export default async function safetyRoutes(fastify) {
 
     return { success: true, message: 'All clear acknowledged' };
   });
+
+  fastify.get('/accessibility-alert', async (request, reply) => {
+    const { format } = request.query;
+    const emergencyMode = await fastify.redis.get('emergency:mode');
+    
+    if (emergencyMode !== 'active') {
+      return { emergency_mode: false, message: 'All clear. Enjoy the event.' };
+    }
+    
+    // Default values if no active incident/zone mapping is found directly
+    const zone = "East Stand";
+    const exit = "Gate NW";
+    const phone = "0161 950 5000";
+    
+    if (format === 'SMS') {
+      return {
+        emergency_mode: true,
+        message: `ANTIGRAVITY ALERT: Zone ${zone} — Please move to ${exit}. Staff are helping. Call ${phone} for assistance.`
+      };
+    } else if (format === 'AUDIO_SCRIPT') {
+      return {
+        emergency_mode: true,
+        message: `This is an automated safety announcement. Crowd monitoring systems have detected high density in the ${zone.toLowerCase()}. Please move calmly toward exit gates northwest and southwest. Do not run. Staff members are guiding you.`
+      };
+    } else if (format === 'LARGE_PRINT') {
+      return {
+        emergency_mode: true,
+        font_size_recommendation: '24pt minimum',
+        high_contrast: true,
+        message: `This is an automated safety announcement. Crowd monitoring systems have detected high density in the ${zone.toLowerCase()}. Please move calmly toward exit gates northwest and southwest. Do not run. Staff members are guiding you.`
+      };
+    }
+    
+    return { emergency_mode: true, message: 'Emergency active. Please evacuate.' };
+  });
 }

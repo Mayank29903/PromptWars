@@ -9,22 +9,22 @@ class MockSocketService {
   }
 
   connect() {
-    console.log("WS Connecting to ws://localhost:3001...");
+    this.connected = false;
+    useOpsStore.getState().setConnectionStatus('connecting');
+    console.log('WS Connecting to ws://localhost:3001...');
     setTimeout(() => {
       this.connected = true;
+      useOpsStore.getState().setConnectionStatus('connected');
       this.startSimulations();
-    }, 1000);
+    }, 1200);
   }
 
   startSimulations() {
-    const store = useOpsStore.getState();
-
     // 1. Queue Update Interval (every 4800ms)
     this.intervals.push(setInterval(() => {
       const { queues, setQueues } = useOpsStore.getState();
       const updatedQueues = queues.map(q => {
-        // Random walk +/- 1 min bounds checked
-        const walk = Math.floor(Math.random() * 3) - 1; 
+        const walk = Math.floor(Math.random() * 3) - 1;
         const newWait = Math.max(0, Math.min(q.wait_max, q.current_wait + walk));
         return { ...q, current_wait: newWait };
       });
@@ -36,15 +36,13 @@ class MockSocketService {
       const { zones, updateZoneTarget } = useOpsStore.getState();
       zones.forEach(z => {
         if (z.is_pitch) return;
-        
+
         let min = 0.1, max = 0.9;
-        
-        // Use specified density_range if available in original spec (we mocked it randomly here bounded)
-        if (z.always_high) { min = 0.80; max = 0.99; }
-        else if (z.id === 'N') { min = 0.55; max = 0.92; }
+        if (z.always_high)    { min = 0.80; max = 0.99; }
+        else if (z.id === 'N')  { min = 0.55; max = 0.92; }
         else if (z.id === 'NW') { min = 0.28; max = 0.65; }
-        else if (z.id === 'S') { min = 0.70; max = 0.96; }
-        
+        else if (z.id === 'S')  { min = 0.70; max = 0.96; }
+
         const newTarget = Math.random() * (max - min) + min;
         updateZoneTarget(z.id, newTarget);
       });
@@ -66,6 +64,7 @@ class MockSocketService {
     this.intervals.forEach(clearInterval);
     this.intervals = [];
     this.connected = false;
+    useOpsStore.getState().setConnectionStatus('disconnected');
   }
 }
 

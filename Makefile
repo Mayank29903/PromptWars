@@ -9,7 +9,7 @@
 
 COMPOSE = docker compose -f docker-compose.dev.yml
 
-.PHONY: up down health seed demo logs
+.PHONY: up down health seed demo logs explain test
 
 # ── Boot all services ─────────────────────────────────────────────────
 up:
@@ -86,3 +86,20 @@ demo: up seed
 # ── Tail logs ─────────────────────────────────────────────────────────
 logs:
 	$(COMPOSE) logs -f --tail=50
+
+# ── Explainability Endpoints ──────────────────────────────────────────
+explain:
+	@echo "Crush Risk Explainability:"
+	curl "http://localhost:8000/ml/predict/explain-crush?density=6.5&velocity=0.2&convergence=0.8&acceleration=0.6"
+	@echo "\n\nQueue Prediction Explainability:"
+	curl "http://localhost:8000/ml/predict/explain-queue?queue_length=20&servers=4&halftime_minutes=5&rivalry=0.95"
+	@echo "\n\nModel Card (Responsible AI):"
+	curl http://localhost:8000/ml/predict/model-card
+
+# ── Run Tests ─────────────────────────────────────────────────────────
+test:
+	@echo "Running tests across Python and Node.js codebases..."
+	cd services/safety-service && python -m pytest tests/ -v
+	cd services/fan-pulse-service && python -m pytest tests/ -v
+	cd services/predict-engine && python -m pytest tests/ -v
+	pnpm test

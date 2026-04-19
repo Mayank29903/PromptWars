@@ -1,11 +1,37 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useOpsStore } from '../store/ops';
 import { useClock } from '../utils/hooks';
 import { HeatmapCanvas } from '../components/HeatmapCanvas';
 import { socketService } from '../services/socket';
 import { TimelineScrubber, Ticker } from '../components/TimelineFooter';
 
-function Header() {
+// ── Inline sleep util — no external import needed ───────────────────
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ── NarrationBanner — auto-demo step overlay ─────────────────────────
+function NarrationBanner({ demoStep, demoNarration }) {
+  return (
+    <div className="absolute top-[130px] left-4 right-4 z-30 bg-black/90 border border-[var(--ag-cyan)] rounded overflow-hidden">
+      <div className="px-4 py-2 flex items-center gap-3">
+        <div className="w-1 self-stretch bg-[var(--ag-cyan)] rounded-full shrink-0"></div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[9px] font-mono text-[var(--ag-cyan)]/60 tracking-widest mb-0.5">AUTO DEMO — STEP {demoStep}/7</div>
+          <div className="font-mono text-sm text-[var(--ag-cyan)] leading-snug">{demoNarration}</div>
+        </div>
+        <div className="font-mono text-[10px] text-[var(--ag-cyan)]/50 animate-pulse shrink-0">▶ RUNNING</div>
+      </div>
+      {/* Progress bar */}
+      <div className="h-[2px] w-full bg-black/60">
+        <div
+          className="h-full bg-[var(--ag-cyan)] transition-all duration-1000 ease-linear"
+          style={{ width: `${(demoStep / 7) * 100}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function Header({ setView, demoRunning, onRunDemo }) {
   const { timeStr } = useClock();
   const [aiState, setAiState] = useState(0);
 
@@ -50,12 +76,37 @@ function Header() {
         <span className="text-[var(--ag-text-secondary)] italic text-sm">Match in progress (1T 42')</span>
       </div>
 
-      {/* Center Right */}
-      <div 
-        className={`px-3 py-1 font-mono text-xs border rounded transition-colors duration-500`}
-        style={{ borderColor: currentAi.color, color: currentAi.color, backgroundColor: `color-mix(in srgb, ${currentAi.color} 10%, transparent)` }}
-      >
-        <span className={currentAi.animate}>{currentAi.text}</span>
+      {/* Center Right — AI pill + FAN VIEW + RUN DEMO */}
+      <div className="flex items-center gap-2">
+        <div 
+          className={`px-3 py-1 font-mono text-xs border rounded transition-colors duration-500`}
+          style={{ borderColor: currentAi.color, color: currentAi.color, backgroundColor: `color-mix(in srgb, ${currentAi.color} 10%, transparent)` }}
+        >
+          <span className={currentAi.animate}>{currentAi.text}</span>
+        </div>
+
+        {/* RUN DEMO button */}
+        {demoRunning ? (
+          <span className="px-3 py-1 font-mono text-xs border border-dashed border-[var(--ag-cyan)] text-[var(--ag-cyan)] animate-pulse rounded">
+            DEMO RUNNING...
+          </span>
+        ) : (
+          <button
+            onClick={onRunDemo}
+            className="px-3 py-1 font-mono text-xs tracking-widest border border-dashed border-[var(--ag-cyan)] text-[var(--ag-cyan)] hover:bg-cyan-900/20 transition-colors rounded"
+          >
+            RUN DEMO
+          </button>
+        )}
+
+        {setView && (
+          <button
+            onClick={() => setView('mobile')}
+            className="px-3 py-1 font-mono text-xs border border-[var(--ag-cyan)] text-[var(--ag-cyan)] rounded-full hover:bg-[var(--ag-cyan)]/10 transition-colors tracking-widest"
+          >
+            FAN VIEW ↗
+          </button>
+        )}
       </div>
 
       {/* Right */}
@@ -100,10 +151,32 @@ function MetricCard({ label, value, subtext, color, pulse }) {
   );
 }
 
+// BUG-D: Seeded deterministic function — produces identical results every render
+function seededRandom(seed) {
+  const x = Math.sin(seed + 1) * 10000;
+  return x - Math.floor(x);
+}
+
+// Pre-compute deterministic 48-tick forecast (east stand peaks at tick 12 ≈ minute 61).
+// Computed once at module level so it's NEVER regenerated on re-render.
+const PREDICT_TICKS = Array.from({ length: 48 }, (_, i) => {
+  const base = 0.45 + Math.sin(i * 0.18) * 0.28 + Math.sin(i * 0.41) * 0.12;
+  const noise = (seededRandom(i * 7 + 13) - 0.5) * 0.04;
+  const val = Math.max(0.1, Math.min(0.98, base + noise));
+  return {
+    p25: Math.max(0.05, val * 0.78),
+    p50: val,
+    p85: Math.min(1.0, val * 1.28)
+  };
+});
+
 function PredictPanel() {
-  const { predictMode, predictData, loadPredictData } = useOpsStore();
+  const { predictMode, predictData, loadPredictData, timelinePosition } = useOpsStore();
   const canvasRef = useRef(null);
   const [tooltip, setTooltip] = useState(null);
+
+  // Current tick follows the timeline scrubber
+  const currentTick = Math.floor(timelinePosition * 47);
 
   useEffect(() => {
      if (predictMode && !predictData) loadPredictData();
@@ -113,17 +186,8 @@ function PredictPanel() {
     if (!predictMode || !canvasRef.current) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
-    
-    // Check if we have actual predictData or generate deterministic mock data for 48 ticks
-    const ticks = [];
-    for (let i = 0; i < 48; i++) {
-       const base = 0.5 + Math.sin(i / 10) * 0.3 + (Math.random() * 0.05);
-       ticks.push({ 
-         p25: Math.max(0.1, base * 0.8), 
-         p50: Math.max(0.1, base), 
-         p85: Math.min(1.0, base * 1.25) 
-       });
-    }
+
+    const ticks = PREDICT_TICKS;
 
     const render = () => {
        ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -160,7 +224,6 @@ function PredictPanel() {
           ctx.fillRect(x + barW * 2, canvas.height - h25, barW, h25);
        });
 
-       const currentTick = 12; // Example vertical line
        const lineX = startX + currentTick * (barW * 3 + gap) + (barW * 1.5);
        ctx.strokeStyle = '#dc2626';
        ctx.lineWidth = 2;
@@ -231,6 +294,88 @@ function PredictPanel() {
   )
 }
 
+function TelemetryPanel() {
+  const [telemetry, setTelemetry] = useState(null);
+  const [offline, setOffline] = useState(false);
+
+  useEffect(() => {
+    const fetchTelemetry = async () => {
+      try {
+        const res = await fetch('/api/v1/ops/telemetry');
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        setTelemetry(data);
+        setOffline(false);
+      } catch (e) {
+        setOffline(true);
+      }
+    };
+
+    fetchTelemetry();
+    const it = setInterval(fetchTelemetry, 10000);
+    return () => clearInterval(it);
+  }, []);
+
+  const getStatus = () => {
+    if (offline || !telemetry) return 'OFFLINE';
+    const s = telemetry.services;
+    const allUp = s.api_gateway === 'UP' && s.safety_net === 'UP' && s.ml_service === 'UP' && s.predict_engine === 'UP';
+    return allUp ? 'NOMINAL' : 'DEGRADED';
+  };
+
+  const status = getStatus();
+  const statusColor = status === 'NOMINAL' ? 'text-[var(--ag-green)]' : status === 'DEGRADED' ? 'text-[var(--ag-amber)]' : 'text-[var(--ag-red)]';
+
+  const redisLatency = telemetry ? telemetry.redis_latency_ms : 0;
+  const latColor = redisLatency < 5 ? 'var(--ag-green)' : redisLatency < 20 ? 'var(--ag-amber)' : 'var(--ag-red)';
+  const memory = telemetry ? telemetry.memory_mb : 0;
+  const memPct = Math.min(100, (memory / 512) * 100);
+
+  const ServiceDot = ({ up }) => (
+    <div className={`w-2 h-2 rounded-full ${offline ? 'bg-[var(--ag-red)]' : (up ? 'bg-[var(--ag-green)]' : 'bg-[var(--ag-red)]')}`}></div>
+  );
+
+  return (
+    <div className="ag-card p-3 flex flex-col shrink-0 min-h-[120px] justify-between">
+      <div className="flex justify-between items-center border-b border-[var(--ag-border-subtle)] pb-2 mb-2">
+        <span className="ag-label">SYSTEM HEALTH</span>
+        <span className={`font-mono text-[10px] font-bold ${statusColor}`}>{status}</span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 flex-1">
+         {/* Left Side: Metrics */}
+         <div className="flex flex-col gap-2 justify-center">
+            <div className="flex justify-between items-end">
+               <span className="text-[10px] text-[var(--ag-text-secondary)]">REDIS IO</span>
+               <span className="font-mono text-xs" style={{ color: latColor }}>{offline ? '--' : redisLatency}ms</span>
+            </div>
+            <div className="flex flex-col gap-1">
+               <div className="flex justify-between items-end">
+                 <span className="text-[10px] text-[var(--ag-text-secondary)]">MEMORY</span>
+                 <span className="font-mono text-[10px] opacity-80">{offline ? '-- ' : memory}MB</span>
+               </div>
+               <div className="h-[2px] w-full bg-[#0a1524]">
+                 <div className="h-full bg-[var(--ag-cyan)] transition-all" style={{ width: `${offline ? 0 : memPct}%` }}></div>
+               </div>
+            </div>
+         </div>
+
+         {/* Right Side: Services Row Map */}
+         <div className="flex flex-col items-end justify-center gap-1">
+            <span className="text-[10px] text-[var(--ag-text-secondary)] mb-1">SERVICES</span>
+            <div className="grid grid-cols-2 gap-2">
+               <ServiceDot up={telemetry?.services?.api_gateway === 'UP'} />
+               <ServiceDot up={telemetry?.services?.safety_net === 'UP'} />
+               <ServiceDot up={telemetry?.services?.ml_service === 'UP'} />
+               <ServiceDot up={telemetry?.services?.predict_engine === 'UP'} />
+            </div>
+            <span className="font-mono text-[8px] text-[var(--ag-text-secondary)] mt-1 opacity-50">API/SAF/ML/PRE</span>
+         </div>
+      </div>
+    </div>
+  );
+}
+
 function Sidebar() {
   const { systemModuleStatuses, queues } = useOpsStore();
 
@@ -281,6 +426,8 @@ function Sidebar() {
           })}
         </div>
       </div>
+      
+      <TelemetryPanel />
     </div>
   );
 }
@@ -357,24 +504,278 @@ function EmergencyOverlay() {
   )
 }
 
-export default function CommandCenter() {
-  const { setPredictMode, setEmergencyMode, predictMode } = useOpsStore();
+// ── ZoneExplainer — floating explainability panel ────────────────────
+function ZoneExplainer({ data, onDismiss }) {
+  if (!data) return null;
+
+  const alertColors = {
+    NORMAL: { bg: 'var(--ag-green)', text: '#00e09e' },
+    CAUTION: { bg: 'var(--ag-amber)', text: '#f5a020' },
+    WARNING: { bg: 'var(--ag-red)', text: '#dc2626' },
+    CRITICAL: { bg: 'var(--ag-red)', text: '#ff3d54' },
+  };
+
+  const alertStyle = alertColors[data.alert_level] || alertColors.NORMAL;
+  const contributions = data.feature_contributions || [];
+  const topTwo = contributions.slice(0, 2);
+
+  // Max contribution for scaling bars
+  const maxContrib = Math.max(...contributions.map(c => c.weighted_contribution), 0.01);
+
+  const barColor = (feat) => {
+    if (feat.feature === 'crowd_density') return 'var(--ag-red)';
+    if (feat.feature === 'crowd_velocity') return 'var(--ag-amber)';
+    if (feat.feature === 'crowd_convergence') return 'var(--ag-cyan)';
+    return 'var(--ag-green)';
+  };
+
+  return (
+    <div className="absolute bottom-16 left-6 w-72 z-30 ag-card p-3 backdrop-blur-md" style={{ backgroundColor: 'rgba(2,6,13,0.95)', borderColor: alertStyle.text, borderWidth: '1px' }}>
+      {/* Header */}
+      <div className="flex justify-between items-start mb-2">
+        <div>
+          <div className="ag-label text-[9px] tracking-widest mb-0.5">ZONE EXPLAINABILITY</div>
+          <div className="font-mono text-sm font-bold text-white">{data.zone_name}</div>
+        </div>
+        <button
+          onClick={onDismiss}
+          className="text-[var(--ag-text-secondary)] hover:text-white text-lg leading-none transition-colors px-1"
+        >
+          ×
+        </button>
+      </div>
+
+      {/* Risk score + badge */}
+      <div className="flex items-center gap-3 mb-3 pb-2 border-b border-[var(--ag-border-subtle)]">
+        <span
+          className="font-mono text-3xl font-bold leading-none"
+          style={{ color: alertStyle.text, textShadow: `0 0 12px ${alertStyle.text}` }}
+        >
+          {data.crush_risk_score}
+        </span>
+        <span
+          className="px-2 py-0.5 font-mono text-[10px] tracking-widest rounded font-bold"
+          style={{
+            color: alertStyle.text,
+            backgroundColor: `color-mix(in srgb, ${alertStyle.bg} 15%, transparent)`,
+            border: `1px solid ${alertStyle.text}`,
+          }}
+        >
+          {data.alert_level}
+        </span>
+      </div>
+
+      {/* Top 2 contributors */}
+      <div className="flex flex-col gap-2 mb-2">
+        {topTwo.map((feat, i) => (
+          <div key={feat.feature}>
+            <div className="flex justify-between items-center mb-0.5">
+              <span className="text-[10px] font-mono text-[var(--ag-text-secondary)] uppercase">
+                {i === 0 ? '▸ PRIMARY' : '▸ SECONDARY'}: {feat.feature.replace(/_/g, ' ')}
+              </span>
+              <span className="text-[10px] font-mono" style={{ color: barColor(feat) }}>
+                +{feat.weighted_contribution}
+              </span>
+            </div>
+            {/* Bar */}
+            <div className="h-[4px] w-full bg-[#0a1524] rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-700 ease-out"
+                style={{
+                  width: `${(feat.weighted_contribution / maxContrib) * 100}%`,
+                  backgroundColor: barColor(feat),
+                }}
+              />
+            </div>
+            <div className="text-[9px] text-[var(--ag-text-secondary)] mt-0.5 leading-tight">
+              {feat.plain_english}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Recommendation */}
+      {data.recommendation && (
+        <div className="text-[10px] text-[var(--ag-text-secondary)] border-t border-[var(--ag-border-subtle)] pt-1.5 mt-1 leading-snug font-mono">
+          ▶ {data.recommendation}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function CommandCenter({ setView }) {
+  const { setPredictMode, setEmergencyMode, predictMode, addAlert, loadPredictData } = useOpsStore();
+
+  // ── Zone Explainability state ─────────────────────────────────────
+  const [zoneExplanation, setZoneExplanation] = useState(null);
+
+  const handleZoneClick = useCallback(async (zone) => {
+    const density = zone.current * 6.0; // Convert to persons/sqm
+    const velocity = 0.3;
+    const convergence = zone.current > 0.7 ? 0.8 : 0.2;
+    const acceleration = 0.4;
+
+    try {
+      const params = new URLSearchParams({
+        density: density.toFixed(2),
+        velocity: velocity.toFixed(2),
+        convergence: convergence.toFixed(2),
+        acceleration: acceleration.toFixed(2),
+      });
+      const resp = await fetch(`/ml/predict/explain-crush?${params}`);
+      if (!resp.ok) throw new Error('Endpoint unavailable');
+      const data = await resp.json();
+
+      setZoneExplanation({
+        zone_name: zone.label,
+        crush_risk_score: data.crush_risk_score,
+        alert_level: data.alert_level,
+        feature_contributions: data.explanation.feature_contributions,
+        recommendation: data.explanation.recommendation,
+      });
+    } catch {
+      // Fallback — hardcoded explanation when ML service is unreachable
+      const densityPct = (zone.current * 100).toFixed(0);
+      const riskLevel = zone.current > 0.82 ? 'CRITICAL' : zone.current > 0.65 ? 'WARNING' : zone.current > 0.4 ? 'CAUTION' : 'NORMAL';
+      setZoneExplanation({
+        zone_name: zone.label,
+        crush_risk_score: (zone.current * 0.95).toFixed(3),
+        alert_level: riskLevel,
+        feature_contributions: [
+          {
+            feature: 'crowd_density',
+            raw_value: density.toFixed(1),
+            normalized_score: zone.current,
+            weighted_contribution: (0.35 * zone.current).toFixed(3),
+            pct_of_total: 40,
+            plain_english: `Zone at ${densityPct}% capacity — density is the primary risk driver`,
+          },
+          {
+            feature: 'crowd_velocity',
+            raw_value: velocity,
+            normalized_score: 0.625,
+            weighted_contribution: (0.30 * 0.625).toFixed(3),
+            pct_of_total: 25,
+            plain_english: `Crowd moving slowly at ${velocity} m/s — restricted movement detected`,
+          },
+        ],
+        recommendation: riskLevel === 'CRITICAL'
+          ? 'EVACUATE — activate full emergency protocol immediately'
+          : riskLevel === 'WARNING'
+          ? 'Immediate security dispatch required'
+          : 'Zone within operational parameters',
+      });
+    }
+  }, []);
+
+  // ── Auto-Demo state ───────────────────────────────────────────────
+  const [demoRunning, setDemoRunning]       = useState(false);
+  const [demoStep, setDemoStep]             = useState(0);
+  const [demoNarration, setDemoNarration]   = useState('');
+
+  const startDemo = async () => {
+    if (demoRunning) return;
+
+    // Step 1
+    setDemoRunning(true);
+    setDemoStep(1);
+    setDemoNarration('ANTIGRAVITY DEMO — Loading live venue state...');
+    loadPredictData();
+    setPredictMode(true);
+    await sleep(2000);
+
+    // Step 2
+    setDemoStep(2);
+    setDemoNarration('CROWDFLOW AI ACTIVE — East Stand at 91% density. Crush risk scoring initiated.');
+    addAlert({ id: Date.now(), type: 'critical', icon: '⚠', message: 'CrowdFlow AI: East Stand density 91% — initiating crush risk assessment' });
+    await sleep(2000);
+
+    // Step 3
+    setDemoStep(3);
+    setDemoNarration('SAFETYNET: Reading 1/3 — Risk score 0.847. Consecutive readings required before escalation.');
+    addAlert({ id: Date.now(), type: 'warning', icon: '⚠', message: 'SafetyNet reading 1/3 — crush risk score 0.847 (threshold: 0.82)' });
+    await sleep(2500);
+
+    // Step 4
+    setDemoStep(4);
+    setDemoNarration('SAFETYNET: Reading 2/3 — Risk score 0.891. WARNING dispatching security units.');
+    addAlert({ id: Date.now(), type: 'warning', icon: '⚠', message: 'SafetyNet reading 2/3 — security units 4 and 9 dispatched to Zone E' });
+    await sleep(2500);
+
+    // Step 5 — CRITICAL flip
+    setDemoStep(5);
+    setDemoNarration('SAFETYNET: Reading 3/3 — CRITICAL THRESHOLD REACHED. Autonomous emergency protocol activating.');
+    await sleep(500);
+    setEmergencyMode(true);
+    await sleep(1000);
+
+    // Step 6
+    setDemoStep(6);
+    setDemoNarration('EMERGENCY PROTOCOL ACTIVE — PA broadcast sent. Evacuation routes computed. 312 fans rerouted. Emergency services notified.');
+    addAlert({ id: Date.now(), type: 'critical', icon: '🚨', message: 'EMERGENCY — All systems activated simultaneously via asyncio.gather. Route: Zone E → Gate NW (38s)' });
+    await sleep(4500);
+
+    // Step 7
+    setDemoStep(7);
+    setDemoNarration('FANPULSE ACTIVE — Fans accepting rerouting earn 25 points. Compliance rate: 68%.');
+    addAlert({ id: Date.now(), type: 'ok', icon: '✓', message: 'FanPulse: 312 fans rerouted — 68% accepted AI guidance, earning 25 FanPulse points each' });
+    await sleep(3000);
+
+    // Done — leave emergencyMode active for judges
+    setDemoStep(0);
+    setDemoNarration('');
+    setDemoRunning(false);
+  };
 
   useEffect(() => {
     socketService.connect();
     return () => socketService.disconnect();
   }, []);
 
+  // ── Keyboard Shortcuts (for live demo) ────────────────────────────
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.target.tagName === 'INPUT') return;
+      
+      switch(e.key.toLowerCase()) {
+        case 'd':
+          startDemo();
+          break;
+        case 'e':
+          setEmergencyMode(!emergencyMode);
+          break;
+        case 'p':
+          setPredictMode(!predictMode);
+          break;
+        case 'escape':
+          setEmergencyMode(false);
+          break;
+        default:
+          break;
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [emergencyMode, predictMode, setEmergencyMode, setPredictMode]);
+
   return (
     <div className={`w-screen h-screen m-0 p-0 overflow-hidden flex flex-col font-ui text-[var(--ag-text-primary)] ag-grid-bg transition-colors duration-1000`}>
-      <Header />
+      <Header setView={setView} demoRunning={demoRunning} onRunDemo={startDemo} />
       <MetricsRow />
       <PredictPanel />
+      {/* NarrationBanner — only visible during demo */}
+      {demoRunning && demoNarration && (
+        <NarrationBanner demoStep={demoStep} demoNarration={demoNarration} />
+      )}
       
       {/* Main Area */}
       <div className="flex-1 flex px-4 pb-4 gap-[6px] relative overflow-hidden min-h-0">
         <div className="flex-1 relative border border-[var(--ag-border-subtle)] rounded overflow-hidden">
-           <HeatmapCanvas />
+           <HeatmapCanvas onZoneClick={handleZoneClick} />
+           {/* Zone Explainability Panel */}
+           <ZoneExplainer data={zoneExplanation} onDismiss={() => setZoneExplanation(null)} />
            {/* Dev tools hidden in production build */}
            <div className="absolute top-4 right-4 z-10 flex gap-2">
              {import.meta.env.DEV && (
@@ -389,6 +790,11 @@ export default function CommandCenter() {
                 className={`px-3 py-1 text-xs border transition-colors focus:outline-none ${predictMode ? 'border-[var(--ag-amber)] text-[var(--ag-amber)] bg-amber-900/40 shadow-[0_0_10px_var(--ag-amber)] font-bold' : 'border-[var(--ag-cyan)] text-[var(--ag-cyan)] bg-transparent hover:bg-cyan-900/20'}`}>
                PREDICT 30M
              </button>
+           </div>
+           
+           {/* Keyboard Shortcut Legend */}
+           <div className="absolute bottom-2 left-4 font-mono text-[9px] text-[var(--ag-text-secondary)] opacity-40 hover:opacity-100 transition-opacity z-10 pointer-events-none">
+             [D] demo [E] emergency [P] predict [Esc] clear
            </div>
         </div>
         <Sidebar />

@@ -29,7 +29,7 @@ function getInterpolatedColor(density) {
   return `rgb(${r},${g},${b})`;
 }
 
-export function HeatmapCanvas() {
+export function HeatmapCanvas({ onZoneClick }) {
   const canvasRef = useRef(null);
   const { zones, predictMode, emergencyMode } = useOpsStore();
   const zonesRef = useRef(zones);
@@ -187,6 +187,7 @@ export function HeatmapCanvas() {
     if (hit) {
       selectedZoneRef.current = selectedZoneRef.current === hit.id ? null : hit.id;
       console.log(`[ZONE SELECTED] Zone: ${hit.label} | Density: ${(hit.current * 100).toFixed(1)}% | Status: Nominal`);
+      if (onZoneClick) onZoneClick(hit);
     }
   };
 

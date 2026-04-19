@@ -1,3 +1,4 @@
+import os
 import torch
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
@@ -36,7 +37,8 @@ async def lifespan(app: FastAPI):
 
     # Redis for reading live zone densities
     try:
-        app.state.redis = aioredis.from_url('redis://localhost:6379', decode_responses=True)
+        redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
+        app.state.redis = aioredis.from_url(redis_url, decode_responses=True)
     except Exception:
         app.state.redis = None
 

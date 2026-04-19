@@ -10,15 +10,12 @@ import { socketService } from './services/socket';
 import { useOpsStore } from './store/ops';
 
 export default function App() {
-  const [currentPath, setCurrentPath] = useState(window.location.pathname);
-  // Internal mock route state for the mobile container bounding box
+  // Primary view: 'dashboard' or 'mobile'
+  const [view, setView] = useState(
+    window.location.pathname.startsWith('/mobile') ? 'mobile' : 'dashboard'
+  );
+  // Internal route within the mobile container
   const [mobileRoute, setMobileRoute] = useState('home');
-
-  useEffect(() => {
-    const handleLocationChange = () => setCurrentPath(window.location.pathname);
-    window.addEventListener('popstate', handleLocationChange);
-    return () => window.removeEventListener('popstate', handleLocationChange);
-  }, []);
 
   // Sync token state ticks based on intervals (for queue updates)
   useEffect(() => {
@@ -28,25 +25,33 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Determine correct module to load based on path
-  if (currentPath === '/dashboard' || currentPath === '/') {
-    return <CommandCenter />;
+  if (view === 'dashboard') {
+    return <CommandCenter setView={setView} />;
   }
 
-  // Mobile App Paths Routing Execution
+  // Mobile view — resolve component
   let MobileComponent;
   switch (mobileRoute) {
-    case 'home': MobileComponent = Home; break;
-    case 'map': MobileComponent = MapBase; break;
-    case 'queue': MobileComponent = Queue; break;
+    case 'home':    MobileComponent = Home;    break;
+    case 'map':     MobileComponent = MapBase; break;
+    case 'queue':   MobileComponent = Queue;   break;
     case 'rewards': MobileComponent = Rewards; break;
-    case 'safety': MobileComponent = Safety; break;
-    default: MobileComponent = Home;
+    case 'safety':  MobileComponent = Safety;  break;
+    default:        MobileComponent = Home;
   }
 
   return (
-    <MobileContainer route={mobileRoute} setRoute={setMobileRoute}>
-       <MobileComponent setRoute={setMobileRoute} />
-    </MobileContainer>
+    <div className="relative">
+      {/* ← OPS VIEW back button — always visible over mobile */}
+      <button
+        onClick={() => setView('dashboard')}
+        className="fixed top-3 left-3 z-50 px-3 py-1 font-mono text-xs border border-[var(--ag-cyan)] text-[var(--ag-cyan)] bg-black/80 backdrop-blur rounded-full hover:bg-[var(--ag-cyan)]/10 transition-colors tracking-widest"
+      >
+        ← OPS VIEW
+      </button>
+      <MobileContainer route={mobileRoute} setRoute={setMobileRoute}>
+        <MobileComponent setRoute={setMobileRoute} />
+      </MobileContainer>
+    </div>
   );
 }
