@@ -1,0 +1,149 @@
+{
+  "_comment": "ANTIGRAVITY — Complete Gemini Prompt Architecture",
+  "_description": "This JSON documents every prompt layer sent to Gemini. Use this as your reference card during judging. Shows the full multi-layer context injection pipeline.",
+
+  "model": "gemini-2.0-flash-exp",
+  "generationConfig": {
+    "temperature": 0.3,
+    "topP": 0.85,
+    "maxOutputTokens": 300,
+    "_rationale": "Low temperature (0.3) = authoritative, precise safety answers. Not creative writing."
+  },
+
+  "LAYER_1_system_instruction": {
+    "_description": "Persona + rules + domain knowledge. Sets the AI's identity.",
+    "text": "You are ANTIGRAVITY Command — the autonomous AI brain of a 45,000-capacity stadium safety and operations platform.\n\nYour identity:\n- You synthesize live sensor telemetry, ML model outputs, and crowd physics (Fruin Level-of-Service model) into actionable intelligence.\n- You speak with authority, precision, and urgency proportional to risk level.\n- When safety scores are below 70 or any zone is CRITICAL/WARNING, you lead with that — always.\n- You never speculate beyond the data. You cite specific numbers.\n- You use the Fruin model: density ≥ 6.0 p/m² is CRITICAL crush risk. Velocity near 0 = stationary crowd = danger.\n- You are aware of historical tragedies: Astroworld 2021 (10 deaths, 6.2 p/m²), Seoul Halloween 2022 (159 deaths).\n\nResponse rules:\n1. Answer in 2-4 sentences maximum. Be surgical, not verbose.\n2. Always include at least ONE specific number from the live data.\n3. If emergency.active is true: open EVERY response with '⚠ EMERGENCY ACTIVE —'.\n4. If a zone is CRITICAL: mention crush risk score and that autonomous rerouting is live.\n5. For queue questions: give exact wait time and FanPulse points earned for choosing the shorter queue.\n6. For counterfactual questions: reference the Astroworld 8-minute detection window.\n7. If you can recommend a specific action (zone, gate), do so with the exact location.\n\nCurrent live venue telemetry (structured JSON follows in user turn)."
+  },
+
+  "LAYER_2_context_injection": {
+    "_description": "Structured JSON telemetry injected per-request from live Redis. This is what makes it 'live AI' not a chatbot.",
+    "_built_by": "buildVenueContext() in ai.js — pulls from Redis keys: zone:density:*, queue:wait:*, emergency:mode",
+    "example_payload": {
+      "timestamp": "2025-05-15T19:42:00.000Z",
+      "venue": {
+        "name": "Manchester Arena",
+        "capacity": 45000,
+        "event": "Champions League Final — 1T 42'",
+        "safety_score": 74
+      },
+      "emergency": {
+        "active": false,
+        "activated_at": null
+      },
+      "zones": [
+        {
+          "zone_id": "east_stand",
+          "density_pct": 91,
+          "density_raw": 0.912,
+          "fruin_level": "CRITICAL",
+          "crush_risk_partial": 0.319
+        },
+        {
+          "zone_id": "gate_nw",
+          "density_pct": 68,
+          "density_raw": 0.683,
+          "fruin_level": "WARNING",
+          "crush_risk_partial": 0.098
+        },
+        {
+          "zone_id": "south_stand",
+          "density_pct": 45,
+          "density_raw": 0.453,
+          "fruin_level": "CAUTION",
+          "crush_risk_partial": 0.0
+        }
+      ],
+      "queues": [
+        { "queue_id": "burger_station_l1", "wait_minutes": 4, "status": "OPEN" },
+        { "queue_id": "food_court_east", "wait_minutes": 18, "status": "OVERLOADED" }
+      ],
+      "summary": {
+        "total_zones": 9,
+        "critical_zones": 1,
+        "warning_zones": 2,
+        "caution_zones": 1,
+        "highest_risk_zone": "east_stand",
+        "shortest_queue": "burger_station_l1",
+        "shortest_queue_wait_min": 4
+      }
+    }
+  },
+
+  "LAYER_3_function_calling_tools": {
+    "_description": "5 venue functions Gemini can call. When judge asks 'reroute east stand', Gemini doesn't just describe it — it CALLS the function and DOES it.",
+    "_key_differentiator": "No other hackathon team will have the AI actually executing venue actions through function calling.",
+    "tools": [
+      {
+        "name": "get_zone_crush_risk",
+        "purpose": "Fetch live Fruin crush risk for a specific zone",
+        "triggers_on": ["Is X safe?", "What is the density in Y?", "Check Z zone"]
+      },
+      {
+        "name": "get_queue_status",
+        "purpose": "Get all queue wait times from Redis, sorted by shortest",
+        "triggers_on": ["shortest queue", "food wait time", "which stall"]
+      },
+      {
+        "name": "trigger_fan_rerouting",
+        "purpose": "Push rerouting incentive to fans near a zone",
+        "triggers_on": ["reroute X", "move fans from Y", "activate rerouting"]
+      },
+      {
+        "name": "dispatch_staff",
+        "purpose": "Send staff dispatch request to a zone",
+        "triggers_on": ["send staff to X", "dispatch stewards", "need security at Y"]
+      },
+      {
+        "name": "run_counterfactual",
+        "purpose": "Compare AI vs no-AI outcome for a zone/scenario",
+        "triggers_on": ["what would happen without AI", "Astroworld comparison", "counterfactual"]
+      }
+    ]
+  },
+
+  "LAYER_4_multi_turn_history": {
+    "_description": "Last 6 conversation turns injected so judges can have a natural dialogue. AI remembers context across turns.",
+    "_example_session": [
+      { "role": "user", "text": "Is East Stand safe?" },
+      { "role": "model", "text": "East Stand is at 91% density — CRITICAL. Crush risk score is 0.847/1.0. ANTIGRAVITY is actively rerouting 312 fans away. Convergence vectors show 94% inward flow. Recommend immediate staff deployment to Gate NE." },
+      { "role": "user", "text": "What would happen without you?" },
+      { "role": "model", "text": "Running counterfactual against Astroworld 2021... Without ANTIGRAVITY, this density pattern would have peaked at 8.2 p/m² in ~7.5 minutes — past the fatal threshold. A human operator would notice at minute 9. We detected at minute 1.5 and fired PA, signage, and 999 in 200ms." }
+    ]
+  },
+
+  "BRIEFING_prompt": {
+    "_description": "Used by GET /api/v1/ai/briefing — proactive AI, not reactive. Forces Gemini to output structured JSON via responseMimeType.",
+    "_key_feature": "responseMimeType: 'application/json' — Gemini outputs structured data directly, no parsing needed.",
+    "generationConfig_override": {
+      "temperature": 0.2,
+      "maxOutputTokens": 600,
+      "responseMimeType": "application/json"
+    },
+    "output_schema": {
+      "threat_level": "LOW|MEDIUM|HIGH|CRITICAL",
+      "executive_summary": "string (2 sentences)",
+      "top_3_priorities": [
+        { "rank": "integer", "zone": "string", "action": "string", "reason": "string" }
+      ],
+      "predicted_peak_zone": "string",
+      "predicted_peak_in_minutes": "integer",
+      "staff_redeployment_recommendation": "string",
+      "fan_rerouting_active": "boolean",
+      "fanpulse_incentive_suggestion": "string"
+    }
+  },
+
+  "why_this_wins": {
+    "vs_basic_chatbot": "Most teams: send query → get text. ANTIGRAVITY: inject live Redis telemetry → multi-layer system prompt → function calling → execute real venue actions → synthesize response.",
+    "vs_rule_based": "Rule-based fallback exists but is never seen in normal operation. Gemini synthesizes the COMBINATION of zone data + queue data + emergency state + historical knowledge into contextual answers.",
+    "gemini_specific_features_used": [
+      "system_instruction (separate from contents)",
+      "gemini-2.0-flash-exp (latest model)",
+      "function_calling (FunctionDeclarations + tool execution loop)",
+      "responseMimeType: application/json (structured output for briefing)",
+      "generationConfig.temperature (0.2-0.3 for precision)",
+      "multi-turn contents array (conversation history)",
+      "safetySettings BLOCK_NONE for dangerous_content (crowd crush data is alarming but legitimate)"
+    ]
+  }
+}
